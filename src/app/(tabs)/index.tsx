@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet, View, Text, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MediaGrid } from '../../components/MediaGrid';
@@ -9,7 +9,8 @@ import { useSelectionStore } from '../../features/selection/store';
 import { mediaService } from '../../features/media/mediaService';
 import { MediaItem } from '../../features/media/types';
 import { DarkTheme, Palette, Spacing, Fonts } from '../../theme/theme';
-import { AppIcon, SparklesIcon } from '../../components/ui/Icon';
+import { SparklesIcon } from '../../components/ui/Icon';
+import { Button } from '../../components/ui/button';
 
 export default function CameraTab() {
   const router = useRouter();
@@ -55,17 +56,17 @@ export default function CameraTab() {
         <View style={styles.header}>
           <Text style={styles.title}>Camera</Text>
           {mediaService.isDemoMode && (
-            <TouchableOpacity
-              style={styles.demoBadge}
+            <Button
+              label="Add Photo"
+              icon={SparklesIcon}
+              size="sm"
+              shape="pill"
+              variant="frosted"
               onPress={() => {
                 mediaService.simulateAddPhoto();
                 refresh();
               }}
-              activeOpacity={0.7}
-            >
-              <AppIcon icon={SparklesIcon} size={14} color="#60A5FA" />
-              <Text style={styles.demoBadgeText}>Add Photo</Text>
-            </TouchableOpacity>
+            />
           )}
         </View>
       )}

@@ -71,10 +71,10 @@ export default function AlbumsTab() {
   };
 
   const handleAlbumPress = (album: Album) => {
-    // Open album screen (ALB-4)
+    // Open dedicated album screen (ALB-4)
     router.push({
-      pathname: '/viewer',
-      params: { source: `album:${album.id}` },
+      pathname: '/album/[id]',
+      params: { id: album.id, title: album.title },
     });
   };
 

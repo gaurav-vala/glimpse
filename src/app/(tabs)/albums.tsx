@@ -80,7 +80,7 @@ export default function AlbumsTab() {
   };
 
   const handleSwipeRight = useCallback(() => {
-    router.navigate('/(tabs)/index');
+    router.navigate('/');
   }, [router]);
 
   return (

@@ -2,9 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { MediaItem } from '../features/media/types';
-import { AppIcon, Calendar03Icon, File02Icon, Image02Icon, Time01Icon, Video02Icon } from './ui/Icon';
+import {
+  AppIcon,
+  Calendar03Icon,
+  File02Icon,
+  Image01Icon,
+  Time01Icon,
+  Video01Icon,
+} from './ui/Icon';
 import { Popup } from './ui/popup';
-import { DarkTheme, Fonts, Palette, Radius, Spacing } from '../theme/theme';
+import { DarkTheme, Fonts, Spacing } from '../theme/theme';
 
 interface InfoSheetProps {
   item: MediaItem;
@@ -18,12 +25,19 @@ export function InfoSheet({ item, visible, onClose }: InfoSheetProps) {
   useEffect(() => {
     let isMounted = true;
     if (visible && item && item.uri.startsWith('file://')) {
-      FileSystem.getInfoAsync(item.uri).then((info) => {
-        if (isMounted && info.exists && 'size' in info && typeof info.size === 'number') {
-          const mb = (info.size / (1024 * 1024)).toFixed(1);
-          setFileSizeText(`${mb} MB`);
-        }
-      }).catch(() => {});
+      FileSystem.getInfoAsync(item.uri)
+        .then((info) => {
+          if (
+            isMounted &&
+            info.exists &&
+            'size' in info &&
+            typeof info.size === 'number'
+          ) {
+            const mb = (info.size / (1024 * 1024)).toFixed(1);
+            setFileSizeText(`${mb} MB`);
+          }
+        })
+        .catch(() => {});
     }
     return () => {
       isMounted = false;
@@ -39,6 +53,11 @@ export function InfoSheet({ item, visible, onClose }: InfoSheetProps) {
     minute: '2-digit',
   });
 
+  const megapixels =
+    item.width > 0 && item.height > 0
+      ? ((item.width * item.height) / 1000000).toFixed(1)
+      : null;
+
   return (
     <Popup
       visible={visible}
@@ -47,57 +66,68 @@ export function InfoSheet({ item, visible, onClose }: InfoSheetProps) {
       subtitle={item.filename || (item.mediaType === 'video' ? 'Video asset' : 'Photo asset')}
       maxHeightPercent={0.75}
     >
-      <View style={styles.detailsList}>
-        <InfoTile
-          icon={File02Icon}
-          label="File name"
-          value={item.filename || 'Unknown'}
-        />
-
-        <InfoTile
-          icon={Calendar03Icon}
-          label="Date taken"
-          value={dateStr}
-        />
-
-        <InfoTile
-          icon={item.mediaType === 'video' ? Video02Icon : Image02Icon}
-          label="Resolution"
-          value={
-            item.width > 0 && item.height > 0
-              ? `${item.width} × ${item.height} (${(
-                  (item.width * item.height) /
-                  1000000
-                ).toFixed(1)} MP)`
-              : 'Standard resolution'
-          }
-        />
-
-        <InfoTile
-          icon={File02Icon}
-          label="File size"
-          value={fileSizeText}
-        />
-
-        {item.mediaType === 'video' && (
-          <InfoTile
-            icon={Time01Icon}
-            label="Duration"
-            value={`${Math.floor(item.duration / 60)}m ${Math.floor(item.duration % 60)}s`}
+      <View style={styles.content}>
+        {/* Unified Minimal Inset Group */}
+        <View style={styles.groupCard}>
+          <InfoRow
+            icon={File02Icon}
+            label="File Name"
+            value={item.filename || 'Unknown'}
           />
-        )}
 
-        <InfoTile
-          icon={item.mediaType === 'video' ? Video02Icon : Image02Icon}
-          label="Type"
-          value={item.mediaType === 'video' ? 'Video' : 'Photo'}
-        />
+          <View style={styles.divider} />
+
+          <InfoRow
+            icon={Calendar03Icon}
+            label="Date Taken"
+            value={dateStr}
+          />
+
+          <View style={styles.divider} />
+
+          <InfoRow
+            icon={item.mediaType === 'video' ? Video01Icon : Image01Icon}
+            label="Resolution"
+            value={
+              item.width > 0 && item.height > 0
+                ? `${item.width} × ${item.height}${megapixels ? ` (${megapixels} MP)` : ''}`
+                : 'Standard resolution'
+            }
+          />
+
+          <View style={styles.divider} />
+
+          <InfoRow
+            icon={File02Icon}
+            label="File Size"
+            value={fileSizeText}
+          />
+
+          {item.mediaType === 'video' && (
+            <>
+              <View style={styles.divider} />
+              <InfoRow
+                icon={Time01Icon}
+                label="Duration"
+                value={`${Math.floor(item.duration / 60)}m ${Math.floor(item.duration % 60)}s`}
+              />
+            </>
+          )}
+
+          <View style={styles.divider} />
+
+          <InfoRow
+            icon={item.mediaType === 'video' ? Video01Icon : Image01Icon}
+            label="Type"
+            value={item.mediaType === 'video' ? 'Video' : 'Photo'}
+          />
+        </View>
       </View>
     </Popup>
   );
 }
 
-function InfoTile({
+function InfoRow({
   icon,
   label,
   value,
@@ -107,57 +137,59 @@ function InfoTile({
   value: string;
 }) {
   return (
-    <View style={styles.tile}>
-      <View style={styles.tileIconContainer}>
-        <AppIcon icon={icon} size={16} color={DarkTheme.colors.accent} />
-      </View>
-      <View style={styles.tileTextContainer}>
+    <View style={styles.row}>
+      <View style={styles.rowLeft}>
+        <AppIcon icon={icon} size={17} color={DarkTheme.colors.textMuted} strokeWidth={1.8} />
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.value} numberOfLines={2}>
-          {value}
-        </Text>
       </View>
+      <Text style={styles.value} numberOfLines={2}>
+        {value}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  detailsList: {
-    gap: Spacing.sm,
+  content: {
     paddingTop: Spacing.xs,
   },
-  tile: {
+  groupCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xs,
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.md,
-    borderRadius: Radius.lg,
-    backgroundColor: Palette.surfaceElevated, // #1C1C20
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    justifyContent: 'space-between',
+    paddingVertical: 13,
+    gap: Spacing.md,
   },
-  tileIconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.md,
-    backgroundColor: Palette.accentBlueSoft,
+  rowLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  tileTextContainer: {
-    flex: 1,
+    gap: Spacing.sm + 2,
+    flexShrink: 0,
   },
   label: {
     fontFamily: Fonts.medium,
-    fontSize: 11.5,
+    fontSize: 13.5,
     color: DarkTheme.colors.textMuted,
-    marginBottom: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: -0.1,
   },
   value: {
     fontFamily: Fonts.semiBold,
-    fontSize: 14,
+    fontSize: 13.5,
     color: DarkTheme.colors.text,
+    textAlign: 'right',
+    flex: 1,
+    letterSpacing: -0.2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
 });

@@ -5,7 +5,6 @@ import {
   Text,
   Dimensions,
   FlatList,
-  TouchableOpacity,
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +21,8 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   runOnJS,
+  FadeIn,
+  FadeOut,
 } from 'react-native-reanimated';
 
 import { useMediaStore } from '../features/media/store';
@@ -40,7 +41,7 @@ import {
 } from '../components/ui/Icon';
 import { Fonts, Palette, Radius, Spacing } from '../theme/theme';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function FullscreenViewer() {
   const router = useRouter();
@@ -146,6 +147,7 @@ export default function FullscreenViewer() {
 
   return (
     <View style={styles.container}>
+      {/* Horizontal Paging FlatList (VIEW-1, VIEW-2) */}
       <FlatList
         ref={flatListRef}
         data={items}
@@ -162,6 +164,7 @@ export default function FullscreenViewer() {
         })}
         onViewableItemsChanged={handleViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
+        style={styles.flatList}
         renderItem={({ item, index }) => (
           <ViewerPage
             item={item}
@@ -173,10 +176,13 @@ export default function FullscreenViewer() {
         )}
       />
 
-      {/* Top Floating Bar (VIEW-5) */}
+      {/* Floating Top Bar (VIEW-5) */}
       {showBars && (
         <Animated.View
+          entering={FadeIn.duration(150)}
+          exiting={FadeOut.duration(150)}
           style={[styles.topBar, { paddingTop: Math.max(insets.top, 14) }]}
+          pointerEvents="box-none"
         >
           <PressableScale
             haptic
@@ -186,7 +192,7 @@ export default function FullscreenViewer() {
             accessibilityRole="button"
             accessibilityLabel="Back"
           >
-            <AppIcon icon={ArrowLeft02Icon} size={22} color="#FFFFFF" />
+            <AppIcon icon={ArrowLeft02Icon} size={20} color="#FFFFFF" strokeWidth={2.2} />
           </PressableScale>
 
           <View style={styles.headerTitleColumn}>
@@ -206,18 +212,21 @@ export default function FullscreenViewer() {
             accessibilityRole="button"
             accessibilityLabel="Information"
           >
-            <AppIcon icon={InformationCircleIcon} size={22} color="#FFFFFF" />
+            <AppIcon icon={InformationCircleIcon} size={20} color="#FFFFFF" strokeWidth={2.2} />
           </PressableScale>
         </Animated.View>
       )}
 
-      {/* Bottom Floating Bar (VIEW-5) */}
+      {/* Floating Frosted Bottom Bar (VIEW-5) */}
       {showBars && (
         <Animated.View
+          entering={FadeIn.duration(150)}
+          exiting={FadeOut.duration(150)}
           style={[
             styles.bottomBarWrapper,
             { bottom: Math.max(insets.bottom + 8, 20) },
           ]}
+          pointerEvents="box-none"
         >
           <View style={styles.bottomPill}>
             <PressableScale
@@ -228,7 +237,7 @@ export default function FullscreenViewer() {
               accessibilityRole="button"
               accessibilityLabel="Share"
             >
-              <AppIcon icon={Share01Icon} size={20} color="#FFFFFF" />
+              <AppIcon icon={Share01Icon} size={19} color="#FFFFFF" strokeWidth={2} />
               <Text style={styles.bottomActionText}>Share</Text>
             </PressableScale>
 
@@ -240,7 +249,7 @@ export default function FullscreenViewer() {
               accessibilityRole="button"
               accessibilityLabel="Details"
             >
-              <AppIcon icon={InformationCircleIcon} size={20} color="#FFFFFF" />
+              <AppIcon icon={InformationCircleIcon} size={19} color="#FFFFFF" strokeWidth={2} />
               <Text style={styles.bottomActionText}>Info</Text>
             </PressableScale>
 
@@ -252,7 +261,7 @@ export default function FullscreenViewer() {
               accessibilityRole="button"
               accessibilityLabel="Delete"
             >
-              <AppIcon icon={Delete02Icon} size={20} color={Palette.destructive} />
+              <AppIcon icon={Delete02Icon} size={19} color={Palette.destructive} strokeWidth={2} />
               <Text style={[styles.bottomActionText, { color: Palette.destructive }]}>
                 Delete
               </Text>
@@ -322,8 +331,12 @@ function ViewerPage({
 
 /**
  * PhotoViewerPage
- * Reanimated 4 Worklet-based gestures for pinch-to-zoom (1x-5x),
- * double-tap toggle, pan when zoomed, and swipe down to close (VIEW-3, VIEW-10).
+ * Clean horizontal paging support:
+ * - When not zoomed (1x), horizontal gestures pass freely to FlatList for swiping between photos.
+ * - Swipe down vertically dismisses viewer.
+ * - Double-tap toggles 1x <-> 2.5x.
+ * - Pinch-to-zoom up to 5x.
+ * - 2D pan enabled only when zoomed.
  */
 function PhotoViewerPage({
   item,
@@ -343,8 +356,11 @@ function PhotoViewerPage({
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
 
+  const [isZoomedInternal, setIsZoomedInternal] = useState(false);
+
   const updateZoomState = useCallback(
     (zoomed: boolean) => {
+      setIsZoomedInternal(zoomed);
       onZoomChange(zoomed);
     },
     [onZoomChange]
@@ -393,34 +409,39 @@ function PhotoViewerPage({
       }
     });
 
-  // Pan Gesture: Pan while zoomed, or swipe down to close when scale == 1
-  const pan = Gesture.Pan()
+  // 1. Swipe down dismiss (ONLY active when NOT zoomed, and FAILS on horizontal drag)
+  const swipeDownDismiss = Gesture.Pan()
+    .enabled(!isZoomedInternal)
+    .activeOffsetY([18, 18])
+    .failOffsetX([-18, 18]) // Crucial: fails immediately on horizontal drag so FlatList can swipe left/right!
     .onUpdate((e) => {
-      if (scale.value > 1.05) {
-        translateX.value = savedTranslateX.value + e.translationX;
-        translateY.value = savedTranslateY.value + e.translationY;
-      } else if (e.translationY > 0) {
-        // Swipe down feedback
+      if (e.translationY > 0) {
         translateY.value = e.translationY;
       }
     })
     .onEnd((e) => {
-      if (scale.value > 1.05) {
-        savedTranslateX.value = translateX.value;
-        savedTranslateY.value = translateY.value;
+      if (e.translationY > 120 || e.velocityY > 600) {
+        runOnJS(onClose)();
       } else {
-        if (e.translationY > 120) {
-          // Close viewer (VIEW-10)
-          runOnJS(onClose)();
-        } else {
-          translateY.value = withTiming(0);
-        }
+        translateY.value = withTiming(0);
       }
+    });
+
+  // 2. Pan when zoomed (ONLY active when zoomed in)
+  const zoomPan = Gesture.Pan()
+    .enabled(isZoomedInternal)
+    .onUpdate((e) => {
+      translateX.value = savedTranslateX.value + e.translationX;
+      translateY.value = savedTranslateY.value + e.translationY;
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
     });
 
   const composedGestures = Gesture.Simultaneous(
     Gesture.Exclusive(doubleTap, singleTap),
-    Gesture.Simultaneous(pinch, pan)
+    Gesture.Simultaneous(pinch, zoomPan, swipeDownDismiss)
   );
 
   const animatedImageStyle = useAnimatedStyle(() => ({
@@ -464,7 +485,6 @@ function VideoViewerPage({
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Initialize player only if active and user started playing
   const player = useVideoPlayer(item.uri, (p) => {
     p.loop = false;
   });
@@ -490,10 +510,11 @@ function VideoViewerPage({
           contentFit="contain"
         />
       ) : (
-        <TouchableOpacity
+        <PressableScale
+          haptic
+          scaleTo={0.98}
           style={styles.videoPosterContainer}
           onPress={handleStartPlay}
-          activeOpacity={0.9}
         >
           <Image
             source={{ uri: item.uri }}
@@ -507,7 +528,7 @@ function VideoViewerPage({
               <AppIcon icon={PlayIcon} size={28} color="#FFFFFF" strokeWidth={2.4} />
             </View>
           </View>
-        </TouchableOpacity>
+        </PressableScale>
       )}
     </View>
   );
@@ -518,15 +539,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Palette.black,
   },
+  flatList: {
+    flex: 1,
+  },
   page: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
   imageContainer: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -536,11 +560,11 @@ const styles = StyleSheet.create({
   },
   videoPlayer: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
+    height: '100%',
   },
   videoPosterContainer: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -552,7 +576,7 @@ const styles = StyleSheet.create({
   playButtonCircle: {
     width: 64,
     height: 64,
-    borderRadius: Radius.round,
+    borderRadius: Radius.pill,
     backgroundColor: 'rgba(0, 0, 0, 0.65)',
     borderWidth: 1.5,
     borderColor: 'rgba(255, 255, 255, 0.35)',
@@ -568,30 +592,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.sm,
-    backgroundColor: 'rgba(10, 10, 12, 0.82)',
+    zIndex: 50,
   },
   circleButton: {
     width: 40,
     height: 40,
-    borderRadius: Radius.round,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(23, 23, 26, 0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitleColumn: {
     alignItems: 'center',
+    backgroundColor: 'rgba(23, 23, 26, 0.72)',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   headerDateText: {
     fontFamily: Fonts.semiBold,
-    fontSize: 14,
+    fontSize: 13,
     color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
   headerSubtitleText: {
-    fontFamily: Fonts.regular,
+    fontFamily: Fonts.medium,
     fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: 'rgba(255, 255, 255, 0.65)',
     marginTop: 1,
   },
   bottomBarWrapper: {
@@ -600,17 +633,18 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 50,
   },
   bottomPill: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: 'rgba(20, 20, 24, 0.88)',
+    backgroundColor: 'rgba(23, 23, 26, 0.88)',
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     paddingHorizontal: Spacing.xl,
-    paddingVertical: 10,
+    paddingVertical: 9,
     minWidth: 260,
     gap: Spacing.xl,
     shadowColor: '#000000',
@@ -623,10 +657,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
+    paddingHorizontal: 4,
   },
   bottomActionText: {
     fontFamily: Fonts.medium,
     fontSize: 11,
     color: '#FFFFFF',
+    letterSpacing: -0.1,
   },
 });

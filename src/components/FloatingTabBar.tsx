@@ -13,6 +13,7 @@ import { AppIcon, Camera01Icon, Folder01Icon } from './ui/Icon';
 import { PressableScale } from './ui/pressable-scale';
 import { DarkTheme, Fonts, Radius } from '../theme/theme';
 import { useSelectionStore } from '../features/selection/store';
+import { useMainTabStore } from '../features/navigation/tabStore';
 
 export type BottomTabBarProps = Parameters<
   NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>
@@ -30,17 +31,19 @@ export function FloatingTabBar({
 }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const isSelectionMode = useSelectionStore((s) => s.isSelectionMode);
+  const activeTab = useMainTabStore((s) => s.activeTab);
+  const setActiveTab = useMainTabStore((s) => s.setActiveTab);
 
   // Damped slide animation with zero wobble
-  const indicatorTranslateX = useSharedValue(state.index * TAB_SLOT_WIDTH);
+  const indicatorTranslateX = useSharedValue(activeTab * TAB_SLOT_WIDTH);
 
   useEffect(() => {
-    indicatorTranslateX.value = withSpring(state.index * TAB_SLOT_WIDTH, {
+    indicatorTranslateX.value = withSpring(activeTab * TAB_SLOT_WIDTH, {
       damping: 30,
       stiffness: 320,
       mass: 0.8,
     });
-  }, [state.index, indicatorTranslateX]);
+  }, [activeTab, indicatorTranslateX]);
 
   const animatedIndicatorStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: indicatorTranslateX.value }],
@@ -64,7 +67,7 @@ export function FloatingTabBar({
 
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
-          const isFocused = state.index === index;
+          const isFocused = activeTab === index;
 
           const label =
             options.tabBarLabel !== undefined
@@ -75,13 +78,15 @@ export function FloatingTabBar({
 
           const onPress = () => {
             Haptics.selectionAsync().catch(() => {});
+            setActiveTab(index);
+
             const event = emitter.emit({
               type: 'tabPress',
               target: route.key,
               canPreventDefault: true,
             });
 
-            if (!isFocused && !event.defaultPrevented) {
+            if (state.index !== index && !event.defaultPrevented) {
               navigateToTab(route.key);
             }
           };

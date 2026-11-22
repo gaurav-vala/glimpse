@@ -21,6 +21,7 @@ import {
   Time01Icon,
   Video01Icon,
   Video02Icon,
+  FavouriteIcon,
 } from '@hugeicons/core-free-icons';
 
 export {
@@ -44,6 +45,7 @@ export {
   Time01Icon,
   Video01Icon,
   Video02Icon,
+  FavouriteIcon,
 };
 
 export interface AppIconProps {

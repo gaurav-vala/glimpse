@@ -6,5 +6,9 @@ module.exports = defineConfig([
   expoConfig,
   {
     ignores: ['dist/*'],
+    rules: {
+      // Reanimated shared values mutate .value by design
+      'react-hooks/immutability': 'off',
+    },
   },
 ]);

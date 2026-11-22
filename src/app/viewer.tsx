@@ -1,16 +1,16 @@
-import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   Dimensions,
-  FlatList,
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as Sharing from 'expo-sharing';
+import * as Haptics from 'expo-haptics';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   Gesture,
@@ -20,6 +20,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  withSpring,
   runOnJS,
   FadeIn,
   FadeOut,
@@ -35,6 +36,7 @@ import {
   AppIcon,
   ArrowLeft02Icon,
   Delete02Icon,
+  FavouriteIcon,
   InformationCircleIcon,
   PlayIcon,
   Share01Icon,
@@ -65,33 +67,43 @@ export default function FullscreenViewer() {
     return idx >= 0 ? idx : 0;
   });
 
+  const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [showBars, setShowBars] = useState(true);
   const [infoSheetVisible, setInfoSheetVisible] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
 
-  const flatListRef = useRef<FlatList>(null);
   const currentItem = items[currentIndex];
+  const prevItem = currentIndex > 0 ? items[currentIndex - 1] : undefined;
+  const nextItem = currentIndex < items.length - 1 ? items[currentIndex + 1] : undefined;
 
-  // Near the end of loaded items, trigger next page (VIEW-7)
-  const handleViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      const idx = viewableItems[0].index;
-      if (typeof idx === 'number') {
-        setCurrentIndex(idx);
-        if (idx >= items.length - 10) {
-          loadNextPage(source);
-        }
-      }
+  // Auto-fetch next page near end
+  useEffect(() => {
+    if (currentIndex >= items.length - 8) {
+      loadNextPage(source);
     }
-  }, [items.length, loadNextPage, source]);
-
-  const viewabilityConfig = useMemo(() => ({ itemVisiblePercentThreshold: 60 }), []);
+  }, [currentIndex, items.length, loadNextPage, source]);
 
   const toggleBars = useCallback(() => {
     setShowBars((prev) => !prev);
   }, []);
+
+  const toggleFavorite = useCallback(() => {
+    if (!currentItem) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(currentItem.id)) {
+        next.delete(currentItem.id);
+      } else {
+        next.add(currentItem.id);
+      }
+      return next;
+    });
+  }, [currentItem]);
+
+  const isFavorited = currentItem ? favorites.has(currentItem.id) : false;
 
   const handleShare = async () => {
     if (!currentItem) return;
@@ -145,36 +157,258 @@ export default function FullscreenViewer() {
     });
   };
 
+  // Reanimated Horizontal Carousel & Dismiss Shared Values
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+
+  // Zoom shared values for current image
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const zoomTranslateX = useSharedValue(0);
+  const zoomTranslateY = useSharedValue(0);
+  const savedZoomX = useSharedValue(0);
+  const savedZoomY = useSharedValue(0);
+
+  const resetZoom = useCallback(() => {
+    scale.value = 1;
+    savedScale.value = 1;
+    zoomTranslateX.value = 0;
+    zoomTranslateY.value = 0;
+    savedZoomX.value = 0;
+    savedZoomY.value = 0;
+    setIsZoomed(false);
+  }, [scale, savedScale, zoomTranslateX, zoomTranslateY, savedZoomX, savedZoomY]);
+
+  const goToNext = useCallback(() => {
+    if (currentIndex < items.length - 1) {
+      setCurrentIndex((prev) => prev + 1);
+      resetZoom();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+  }, [currentIndex, items.length, resetZoom]);
+
+  const goToPrev = useCallback(() => {
+    if (currentIndex > 0) {
+      setCurrentIndex((prev) => prev - 1);
+      resetZoom();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+  }, [currentIndex, resetZoom]);
+
+  // Gestures
+
+  // 1. Single Tap: Toggle HUD
+  const singleTap = Gesture.Tap().onEnd(() => {
+    'worklet';
+    runOnJS(toggleBars)();
+  });
+
+  // 2. Double Tap: Zoom 1x <-> 2.5x
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      'worklet';
+      if (scale.value > 1.1) {
+        scale.value = withTiming(1);
+        savedScale.value = 1;
+        zoomTranslateX.value = withTiming(0);
+        zoomTranslateY.value = withTiming(0);
+        savedZoomX.value = 0;
+        savedZoomY.value = 0;
+        runOnJS(setIsZoomed)(false);
+      } else {
+        scale.value = withTiming(2.5);
+        savedScale.value = 2.5;
+        runOnJS(setIsZoomed)(true);
+      }
+    });
+
+  // 3. Pinch to Zoom
+  const pinch = Gesture.Pinch()
+    .onUpdate((e) => {
+      'worklet';
+      scale.value = Math.max(1, Math.min(savedScale.value * e.scale, 5));
+      if (scale.value > 1.05 && !isZoomed) {
+        runOnJS(setIsZoomed)(true);
+      }
+    })
+    .onEnd(() => {
+      'worklet';
+      savedScale.value = scale.value;
+      if (scale.value < 1.05) {
+        scale.value = withTiming(1);
+        savedScale.value = 1;
+        zoomTranslateX.value = withTiming(0);
+        zoomTranslateY.value = withTiming(0);
+        savedZoomX.value = 0;
+        savedZoomY.value = 0;
+        runOnJS(setIsZoomed)(false);
+      }
+    });
+
+  // 4. Horizontal Swipe (moves translateX between images when scale == 1)
+  const horizontalSwipe = Gesture.Pan()
+    .enabled(!isZoomed)
+    .activeOffsetX([-15, 15])
+    .failOffsetY([-25, 25])
+    .onUpdate((e) => {
+      'worklet';
+      if (currentIndex === 0 && e.translationX > 0) {
+        translateX.value = e.translationX * 0.3; // Edge resistance
+      } else if (currentIndex === items.length - 1 && e.translationX < 0) {
+        translateX.value = e.translationX * 0.3; // Edge resistance
+      } else {
+        translateX.value = e.translationX;
+      }
+    })
+    .onEnd((e) => {
+      'worklet';
+      const swipeDistanceThreshold = SCREEN_WIDTH * 0.18;
+      const swipeVelocityThreshold = 350;
+
+      if (
+        (e.translationX < -swipeDistanceThreshold || e.velocityX < -swipeVelocityThreshold) &&
+        currentIndex < items.length - 1
+      ) {
+        // Slide to next image
+        translateX.value = withTiming(-SCREEN_WIDTH, { duration: 180 }, (finished) => {
+          if (finished) {
+            runOnJS(goToNext)();
+            translateX.value = 0;
+          }
+        });
+      } else if (
+        (e.translationX > swipeDistanceThreshold || e.velocityX > swipeVelocityThreshold) &&
+        currentIndex > 0
+      ) {
+        // Slide to previous image
+        translateX.value = withTiming(SCREEN_WIDTH, { duration: 180 }, (finished) => {
+          if (finished) {
+            runOnJS(goToPrev)();
+            translateX.value = 0;
+          }
+        });
+      } else {
+        // Snap back to center
+        translateX.value = withSpring(0, { damping: 25, stiffness: 320 });
+      }
+    });
+
+  // 5. Swipe Down to Close
+  const swipeDownDismiss = Gesture.Pan()
+    .enabled(!isZoomed)
+    .activeOffsetY([18, 18])
+    .failOffsetX([-18, 18])
+    .onUpdate((e) => {
+      'worklet';
+      if (e.translationY > 0) {
+        translateY.value = e.translationY;
+      }
+    })
+    .onEnd((e) => {
+      'worklet';
+      if (e.translationY > 120 || e.velocityY > 600) {
+        runOnJS(router.back)();
+      } else {
+        translateY.value = withTiming(0);
+      }
+    });
+
+  // 6. Pan when Zoomed (2D pan inside zoomed photo)
+  const zoomPan = Gesture.Pan()
+    .enabled(isZoomed)
+    .onUpdate((e) => {
+      'worklet';
+      zoomTranslateX.value = savedZoomX.value + e.translationX;
+      zoomTranslateY.value = savedZoomY.value + e.translationY;
+    })
+    .onEnd(() => {
+      'worklet';
+      savedZoomX.value = zoomTranslateX.value;
+      savedZoomY.value = zoomTranslateY.value;
+    });
+
+  // Compose Gestures
+  const nonZoomGestures = Gesture.Race(swipeDownDismiss, horizontalSwipe);
+  const primaryGesture = isZoomed ? zoomPan : nonZoomGestures;
+
+  const composedGestures = Gesture.Simultaneous(
+    Gesture.Exclusive(doubleTap, singleTap),
+    Gesture.Simultaneous(pinch, primaryGesture)
+  );
+
+  const animatedSliderStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+    ],
+  }));
+
+  const currentImageAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: zoomTranslateX.value },
+      { translateY: zoomTranslateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  if (!currentItem) {
+    return <View style={styles.container} />;
+  }
+
   return (
     <View style={styles.container}>
-      {/* Horizontal Paging FlatList (VIEW-1, VIEW-2) */}
-      <FlatList
-        ref={flatListRef}
-        data={items}
-        keyExtractor={(item) => item.id}
-        horizontal
-        pagingEnabled
-        scrollEnabled={!isZoomed}
-        showsHorizontalScrollIndicator={false}
-        initialScrollIndex={currentIndex >= 0 && currentIndex < items.length ? currentIndex : 0}
-        getItemLayout={(_, index) => ({
-          length: SCREEN_WIDTH,
-          offset: SCREEN_WIDTH * index,
-          index,
-        })}
-        onViewableItemsChanged={handleViewableItemsChanged}
-        viewabilityConfig={viewabilityConfig}
-        style={styles.flatList}
-        renderItem={({ item, index }) => (
-          <ViewerPage
-            item={item}
-            isActive={index === currentIndex}
-            onToggleBars={toggleBars}
-            onClose={() => router.back()}
-            onZoomChange={setIsZoomed}
-          />
-        )}
-      />
+      {/* Interactive Swipeable Carousel */}
+      <GestureDetector gesture={composedGestures}>
+        <Animated.View style={[styles.sliderContainer, animatedSliderStyle]}>
+          {/* Previous Image (offset left) */}
+          {prevItem && (
+            <View style={[styles.slideSlot, { transform: [{ translateX: -SCREEN_WIDTH }] }]}>
+              {prevItem.mediaType === 'video' ? (
+                <VideoSlide item={prevItem} isActive={false} />
+              ) : (
+                <Image
+                  source={{ uri: prevItem.uri }}
+                  style={styles.fullImage}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                />
+              )}
+            </View>
+          )}
+
+          {/* Current Active Image (centered) */}
+          <Animated.View style={[styles.slideSlot, currentImageAnimatedStyle]}>
+            {currentItem.mediaType === 'video' ? (
+              <VideoSlide item={currentItem} isActive={true} />
+            ) : (
+              <Image
+                source={{ uri: currentItem.uri }}
+                style={styles.fullImage}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+                transition={150}
+              />
+            )}
+          </Animated.View>
+
+          {/* Next Image (offset right) */}
+          {nextItem && (
+            <View style={[styles.slideSlot, { transform: [{ translateX: SCREEN_WIDTH }] }]}>
+              {nextItem.mediaType === 'video' ? (
+                <VideoSlide item={nextItem} isActive={false} />
+              ) : (
+                <Image
+                  source={{ uri: nextItem.uri }}
+                  style={styles.fullImage}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                />
+              )}
+            </View>
+          )}
+        </Animated.View>
+      </GestureDetector>
 
       {/* Floating Top Bar (VIEW-5) */}
       {showBars && (
@@ -207,12 +441,17 @@ export default function FullscreenViewer() {
           <PressableScale
             haptic
             scaleTo={0.9}
-            style={styles.circleButton}
-            onPress={() => setInfoSheetVisible(true)}
+            style={[styles.circleButton, isFavorited && styles.circleButtonFavorited]}
+            onPress={toggleFavorite}
             accessibilityRole="button"
-            accessibilityLabel="Information"
+            accessibilityLabel="Favorite"
           >
-            <AppIcon icon={InformationCircleIcon} size={20} color="#FFFFFF" strokeWidth={2.2} />
+            <AppIcon
+              icon={FavouriteIcon}
+              size={20}
+              color={isFavorited ? '#EF4444' : '#FFFFFF'}
+              strokeWidth={2.2}
+            />
           </PressableScale>
         </Animated.View>
       )}
@@ -271,13 +510,11 @@ export default function FullscreenViewer() {
       )}
 
       {/* Info Sheet (VIEW-9) */}
-      {currentItem && (
-        <InfoSheet
-          item={currentItem}
-          visible={infoSheetVisible}
-          onClose={() => setInfoSheetVisible(false)}
-        />
-      )}
+      <InfoSheet
+        item={currentItem}
+        visible={infoSheetVisible}
+        onClose={() => setInfoSheetVisible(false)}
+      />
 
       {/* Delete Confirmation Popup */}
       <ConfirmPopup
@@ -294,195 +531,7 @@ export default function FullscreenViewer() {
   );
 }
 
-interface ViewerPageProps {
-  item: MediaItem;
-  isActive: boolean;
-  onToggleBars: () => void;
-  onClose: () => void;
-  onZoomChange: (zoomed: boolean) => void;
-}
-
-function ViewerPage({
-  item,
-  isActive,
-  onToggleBars,
-  onClose,
-  onZoomChange,
-}: ViewerPageProps) {
-  if (item.mediaType === 'video') {
-    return (
-      <VideoViewerPage
-        item={item}
-        isActive={isActive}
-        onToggleBars={onToggleBars}
-      />
-    );
-  }
-
-  return (
-    <PhotoViewerPage
-      item={item}
-      onToggleBars={onToggleBars}
-      onClose={onClose}
-      onZoomChange={onZoomChange}
-    />
-  );
-}
-
-/**
- * PhotoViewerPage
- * Clean horizontal paging support:
- * - When not zoomed (1x), horizontal gestures pass freely to FlatList for swiping between photos.
- * - Swipe down vertically dismisses viewer.
- * - Double-tap toggles 1x <-> 2.5x.
- * - Pinch-to-zoom up to 5x.
- * - 2D pan enabled only when zoomed.
- */
-function PhotoViewerPage({
-  item,
-  onToggleBars,
-  onClose,
-  onZoomChange,
-}: {
-  item: MediaItem;
-  onToggleBars: () => void;
-  onClose: () => void;
-  onZoomChange: (zoomed: boolean) => void;
-}) {
-  const scale = useSharedValue(1);
-  const savedScale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const savedTranslateX = useSharedValue(0);
-  const savedTranslateY = useSharedValue(0);
-
-  const [isZoomedInternal, setIsZoomedInternal] = useState(false);
-
-  const updateZoomState = useCallback(
-    (zoomed: boolean) => {
-      setIsZoomedInternal(zoomed);
-      onZoomChange(zoomed);
-    },
-    [onZoomChange]
-  );
-
-  // Single Tap: Toggle HUD bars (VIEW-4)
-  const singleTap = Gesture.Tap().onEnd(() => {
-    runOnJS(onToggleBars)();
-  });
-
-  // Double Tap: Toggle zoom (1x <-> 2.5x)
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd(() => {
-      if (scale.value > 1.1) {
-        scale.value = withTiming(1);
-        savedScale.value = 1;
-        translateX.value = withTiming(0);
-        translateY.value = withTiming(0);
-        savedTranslateX.value = 0;
-        savedTranslateY.value = 0;
-        runOnJS(updateZoomState)(false);
-      } else {
-        scale.value = withTiming(2.5);
-        savedScale.value = 2.5;
-        runOnJS(updateZoomState)(true);
-      }
-    });
-
-  // Pinch Gesture: 1x to 5x zoom
-  const pinch = Gesture.Pinch()
-    .onUpdate((e) => {
-      scale.value = Math.max(1, Math.min(savedScale.value * e.scale, 5));
-      runOnJS(updateZoomState)(scale.value > 1.05);
-    })
-    .onEnd(() => {
-      savedScale.value = scale.value;
-      if (scale.value < 1.05) {
-        scale.value = withTiming(1);
-        savedScale.value = 1;
-        translateX.value = withTiming(0);
-        translateY.value = withTiming(0);
-        savedTranslateX.value = 0;
-        savedTranslateY.value = 0;
-        runOnJS(updateZoomState)(false);
-      }
-    });
-
-  // 1. Swipe down dismiss (ONLY active when NOT zoomed, and FAILS on horizontal drag)
-  const swipeDownDismiss = Gesture.Pan()
-    .enabled(!isZoomedInternal)
-    .activeOffsetY([18, 18])
-    .failOffsetX([-18, 18]) // Crucial: fails immediately on horizontal drag so FlatList can swipe left/right!
-    .onUpdate((e) => {
-      if (e.translationY > 0) {
-        translateY.value = e.translationY;
-      }
-    })
-    .onEnd((e) => {
-      if (e.translationY > 120 || e.velocityY > 600) {
-        runOnJS(onClose)();
-      } else {
-        translateY.value = withTiming(0);
-      }
-    });
-
-  // 2. Pan when zoomed (ONLY active when zoomed in)
-  const zoomPan = Gesture.Pan()
-    .enabled(isZoomedInternal)
-    .onUpdate((e) => {
-      translateX.value = savedTranslateX.value + e.translationX;
-      translateY.value = savedTranslateY.value + e.translationY;
-    })
-    .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
-    });
-
-  const composedGestures = Gesture.Simultaneous(
-    Gesture.Exclusive(doubleTap, singleTap),
-    Gesture.Simultaneous(pinch, zoomPan, swipeDownDismiss)
-  );
-
-  const animatedImageStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
-  }));
-
-  return (
-    <View style={styles.page}>
-      <GestureDetector gesture={composedGestures}>
-        <Animated.View style={[styles.imageContainer, animatedImageStyle]}>
-          <Image
-            source={{ uri: item.uri }}
-            style={styles.fullImage}
-            contentFit="contain"
-            cachePolicy="memory-disk"
-            transition={150}
-          />
-        </Animated.View>
-      </GestureDetector>
-    </View>
-  );
-}
-
-/**
- * VideoViewerPage (VIEW-6)
- * Single active video player with native controls,
- * and poster frame with centered play button before starting.
- */
-function VideoViewerPage({
-  item,
-  isActive,
-  onToggleBars,
-}: {
-  item: MediaItem;
-  isActive: boolean;
-  onToggleBars: () => void;
-}) {
+function VideoSlide({ item, isActive }: { item: MediaItem; isActive: boolean }) {
   const [isPlaying, setIsPlaying] = useState(false);
 
   const player = useVideoPlayer(item.uri, (p) => {
@@ -500,37 +549,36 @@ function VideoViewerPage({
     player.play();
   };
 
-  return (
-    <View style={styles.page}>
-      {isActive && isPlaying ? (
-        <VideoView
-          player={player}
-          nativeControls
-          style={styles.videoPlayer}
-          contentFit="contain"
-        />
-      ) : (
-        <PressableScale
-          haptic
-          scaleTo={0.98}
-          style={styles.videoPosterContainer}
-          onPress={handleStartPlay}
-        >
-          <Image
-            source={{ uri: item.uri }}
-            style={styles.fullImage}
-            contentFit="contain"
-            cachePolicy="memory-disk"
-          />
+  if (isActive && isPlaying) {
+    return (
+      <VideoView
+        player={player}
+        nativeControls
+        style={styles.videoPlayer}
+        contentFit="contain"
+      />
+    );
+  }
 
-          <View style={styles.playButtonOverlay}>
-            <View style={styles.playButtonCircle}>
-              <AppIcon icon={PlayIcon} size={28} color="#FFFFFF" strokeWidth={2.4} />
-            </View>
-          </View>
-        </PressableScale>
-      )}
-    </View>
+  return (
+    <PressableScale
+      haptic
+      scaleTo={0.98}
+      style={styles.videoPosterContainer}
+      onPress={handleStartPlay}
+    >
+      <Image
+        source={{ uri: item.uri }}
+        style={styles.fullImage}
+        contentFit="contain"
+        cachePolicy="memory-disk"
+      />
+      <View style={styles.playButtonOverlay}>
+        <View style={styles.playButtonCircle}>
+          <AppIcon icon={PlayIcon} size={28} color="#FFFFFF" strokeWidth={2.4} />
+        </View>
+      </View>
+    </PressableScale>
   );
 }
 
@@ -539,23 +587,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Palette.black,
   },
-  flatList: {
+  sliderContainer: {
     flex: 1,
-  },
-  page: {
     width: SCREEN_WIDTH,
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  imageContainer: {
+  slideSlot: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
     width: SCREEN_WIDTH,
-    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
   fullImage: {
-    width: '100%',
+    width: SCREEN_WIDTH,
     height: '100%',
   },
   videoPlayer: {
@@ -605,6 +654,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  circleButtonFavorited: {
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+    borderColor: 'rgba(239, 68, 68, 0.35)',
   },
   headerTitleColumn: {
     alignItems: 'center',

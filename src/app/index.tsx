@@ -43,35 +43,13 @@ export default function Phase0SpikeScreen() {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
 
-  useEffect(() => {
-    let isMounted = true;
-    mediaService.checkPermissions().then((res) => {
-      if (isMounted) {
-        setPermission(res);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Request permissions (Spike 1)
-  const handleRequestPermissions = async () => {
-    const res = await mediaService.requestPermissions();
-    setPermission(res);
-    if (res.granted) {
-      runBenchmark();
-    }
-  };
-
-  // Run benchmark: fetch 90 assets (Spike 2)
-  const runBenchmark = async () => {
+  const fetchItems = async () => {
     setLoading(true);
     const start = performance.now();
     try {
       const res = await mediaService.getMediaPage({
         first: 90,
-        cameraOnly: false, // Benchmark on real library
+        cameraOnly: true, // Scoped to Camera album
       });
       const duration = Math.round(performance.now() - start);
       setBenchTimeMs(duration);
@@ -86,6 +64,48 @@ export default function Phase0SpikeScreen() {
       Alert.alert('Fetch Error', err?.message || 'Could not fetch assets');
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    mediaService.checkPermissions().then((res) => {
+      if (isMounted) {
+        setPermission(res);
+        if (res.granted) {
+          fetchItems();
+        }
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleRequestPermissions = async () => {
+    const res = await mediaService.requestPermissions();
+    setPermission(res);
+    if (res.granted) {
+      fetchItems();
+    }
+  };
+
+  const handleSimulateAdd = () => {
+    mediaService.simulateAddPhoto();
+    fetchItems();
+  };
+
+  const handleDeleteItem = async (item: MediaItem) => {
+    try {
+      await mediaService.deleteAssets([item.id]);
+      setItems((prev) => prev.filter((i) => i.id !== item.id));
+      setTotalCount((c) => Math.max(0, c - 1));
+      if (selectedPreview?.id === item.id) {
+        setSelectedPreview(null);
+      }
+      Alert.alert('Deleted', `Removed ${item.filename}`);
+    } catch (err: any) {
+      Alert.alert('Delete Error', err?.message);
     }
   };
 
@@ -138,12 +158,25 @@ export default function Phase0SpikeScreen() {
         <View style={styles.header}>
           <View style={styles.badgeRow}>
             <View style={styles.phaseBadge}>
-              <Text style={styles.phaseBadgeText}>PHASE 0 SPIKES</Text>
+              <Text style={styles.phaseBadgeText}>
+                {mediaService.isDemoMode ? 'EXPO GO DEMO MODE' : 'NATIVE MEDIA MODE'}
+              </Text>
             </View>
-            <Text style={styles.brandSubtitle}>Moto Edge / Android 14 Setup</Text>
+            <Text style={styles.brandSubtitle}>Moto Edge / Android 14</Text>
           </View>
           <Text style={styles.title}>Luma Gallery</Text>
         </View>
+
+        {/* Demo Mode Notice Banner for Expo Go */}
+        {mediaService.isDemoMode && (
+          <View style={styles.noticeBanner}>
+            <Ionicons name="information-circle-outline" size={18} color="#60A5FA" />
+            <Text style={styles.noticeText}>
+              Running inside Expo Go. Using high-fidelity demo library (60 Camera items, Videos, Albums). 
+              A release APK (`build:apk`) accesses real device media.
+            </Text>
+          </View>
+        )}
 
         {/* Spike 1: Permissions */}
         <View style={styles.card}>
@@ -168,7 +201,7 @@ export default function Phase0SpikeScreen() {
               ]}
             >
               {permission?.granted
-                ? `Granted (${permission.accessPrivileges})`
+                ? `Granted (${mediaService.isDemoMode ? 'Demo Simulator' : 'Native OS'})`
                 : permission?.status || 'Undetermined'}
             </Text>
           </View>
@@ -199,7 +232,7 @@ export default function Phase0SpikeScreen() {
               <Text style={styles.metricNumber}>
                 {benchTimeMs !== null ? `${benchTimeMs}ms` : '--'}
               </Text>
-              <Text style={styles.metricLabel}>Fetch Time (target &lt;200ms)</Text>
+              <Text style={styles.metricLabel}>Fetch Time (&lt;200ms)</Text>
             </View>
             <View style={styles.metricBox}>
               <Text style={styles.metricNumber}>{items.length}</Text>
@@ -207,24 +240,35 @@ export default function Phase0SpikeScreen() {
             </View>
             <View style={styles.metricBox}>
               <Text style={styles.metricNumber}>{totalCount || '--'}</Text>
-              <Text style={styles.metricLabel}>Total in Library</Text>
+              <Text style={styles.metricLabel}>Total in Folder</Text>
             </View>
           </View>
 
-          <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.buttonDisabled]}
-            onPress={runBenchmark}
-            disabled={loading}
-            activeOpacity={0.8}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.primaryButtonText}>
-                {items.length === 0 ? 'Run 90-Item Benchmark' : 'Re-run Benchmark'}
-              </Text>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={[styles.primaryButton, { flex: 1 }, loading && styles.buttonDisabled]}
+              onPress={fetchItems}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Re-fetch 90 Assets</Text>
+              )}
+            </TouchableOpacity>
+
+            {mediaService.isDemoMode && (
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={handleSimulateAdd}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="camera-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.secondaryButtonText}>Simulate Camera Photo</Text>
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* Spike 5: Zoom & Gesture Worklet Test */}
@@ -251,8 +295,17 @@ export default function Phase0SpikeScreen() {
               </GestureDetector>
             </View>
             <Text style={styles.previewMeta}>
-              Selected: {selectedPreview.filename || selectedPreview.id} ({selectedPreview.mediaType})
+              Selected: {selectedPreview.filename} ({selectedPreview.mediaType})
             </Text>
+
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => handleDeleteItem(selectedPreview)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trash-outline" size={16} color="#EF4444" />
+              <Text style={styles.deleteButtonText}>Test Delete Selected Item</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -260,8 +313,8 @@ export default function Phase0SpikeScreen() {
         {items.length > 0 && (
           <View style={styles.gridSection}>
             <View style={styles.sectionTitleRow}>
-              <Text style={styles.sectionTitle}>First 90 Thumbnails (Spike 3: Video Posters)</Text>
-              <Text style={styles.sectionCount}>{items.length} items</Text>
+              <Text style={styles.sectionTitle}>DCIM / Camera Grid ({items.length} items)</Text>
+              <Text style={styles.sectionCount}>Tap to zoom</Text>
             </View>
 
             <View style={styles.grid}>
@@ -317,7 +370,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
-    paddingBottom: Spacing.lg,
+    paddingBottom: Spacing.md,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -345,6 +398,24 @@ const styles = StyleSheet.create({
   title: {
     ...Typography.largeTitle,
     color: DarkTheme.colors.text,
+  },
+  noticeBanner: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+    backgroundColor: 'rgba(37, 99, 235, 0.12)',
+    borderColor: 'rgba(59, 130, 246, 0.25)',
+    borderWidth: 1,
+    borderRadius: Radius.sm,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  noticeText: {
+    ...Typography.caption,
+    color: '#93C5FD',
+    flex: 1,
+    lineHeight: 18,
   },
   card: {
     backgroundColor: DarkTheme.colors.surface,
@@ -387,12 +458,32 @@ const styles = StyleSheet.create({
     ...Typography.body,
     fontWeight: '600',
   },
+  actionRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
   primaryButton: {
     backgroundColor: DarkTheme.colors.accent,
     paddingVertical: 12,
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  secondaryButton: {
+    backgroundColor: DarkTheme.colors.surfaceElevated,
+    borderColor: DarkTheme.colors.borderStrong,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  secondaryButtonText: {
+    ...Typography.caption,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -446,6 +537,21 @@ const styles = StyleSheet.create({
     color: DarkTheme.colors.textDim,
     marginTop: Spacing.sm,
     textAlign: 'center',
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    backgroundColor: DarkTheme.colors.destructiveSoft,
+    borderRadius: Radius.sm,
+  },
+  deleteButtonText: {
+    ...Typography.caption,
+    color: '#EF4444',
+    fontWeight: '600',
   },
   gridSection: {
     marginTop: Spacing.md,

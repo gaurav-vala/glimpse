@@ -1,13 +1,13 @@
 // 1. Patch Node.js standard fs with graceful-fs to queue/retry synchronous and callback-based calls on EMFILE
 try {
-  const fs = require('fs');
-  const gracefulFs = require('graceful-fs');
+  const fs = require("fs");
+  const gracefulFs = require("graceful-fs");
   gracefulFs.gracefulify(fs);
 } catch {}
 
 // 2. Patch Node.js node:fs/promises (used by Metro's transformer and asset server) to catch EMFILE and retry
 try {
-  const fsPromises = require('node:fs/promises');
+  const fsPromises = require("node:fs/promises");
   const origOpen = fsPromises.open;
   const origReadFile = fsPromises.readFile;
 
@@ -17,8 +17,10 @@ try {
         try {
           return await origOpen.apply(this, args);
         } catch (err) {
-          if (err && err.code === 'EMFILE' && attempt < 7) {
-            await new Promise((resolve) => setTimeout(resolve, 40 * (attempt + 1)));
+          if (err && err.code === "EMFILE" && attempt < 7) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 40 * (attempt + 1)),
+            );
             continue;
           }
           throw err;
@@ -34,8 +36,10 @@ try {
         try {
           return await origReadFile.apply(this, args);
         } catch (err) {
-          if (err && err.code === 'EMFILE' && attempt < 7) {
-            await new Promise((resolve) => setTimeout(resolve, 40 * (attempt + 1)));
+          if (err && err.code === "EMFILE" && attempt < 7) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 40 * (attempt + 1)),
+            );
             continue;
           }
           throw err;
@@ -46,7 +50,7 @@ try {
   }
 } catch {}
 
-const { getDefaultConfig } = require('expo/metro-config');
+const { getDefaultConfig } = require("expo/metro-config");
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
@@ -56,14 +60,14 @@ const config = getDefaultConfig(__dirname);
 // completely eliminating disk file handle exhaustion while providing instant in-memory transforms.
 class MemoryStore {
   constructor() {
-    this.name = 'MemoryStore';
+    this.name = "MemoryStore";
     this.map = new Map();
   }
   get(key) {
-    return this.map.get(key.toString('hex')) ?? null;
+    return this.map.get(key.toString("hex")) ?? null;
   }
   set(key, value) {
-    this.map.set(key.toString('hex'), value);
+    this.map.set(key.toString("hex"), value);
   }
   clear() {
     this.map.clear();
@@ -81,7 +85,7 @@ if (Array.isArray(config.resolver.blockList)) {
     /releases[\\/].*/,
     /android[\\/]app[\\/]build[\\/].*/,
     /android[\\/]\.gradle[\\/].*/,
-    /\.git[\\/].*/
+    /\.git[\\/].*/,
   );
 }
 

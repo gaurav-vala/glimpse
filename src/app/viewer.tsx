@@ -1,37 +1,23 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  Dimensions,
-  Alert,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Image } from 'expo-image';
-import * as Sharing from 'expo-sharing';
-import * as Haptics from 'expo-haptics';
-import { useVideoPlayer, VideoView } from 'expo-video';
-import {
-  Gesture,
-  GestureDetector,
-} from 'react-native-gesture-handler';
+import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Sharing from "expo-sharing";
+import { useVideoPlayer, VideoView } from "expo-video";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Alert, Dimensions, StyleSheet, Text, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSpring,
-  runOnJS,
   FadeIn,
   FadeOut,
-} from 'react-native-reanimated';
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useMediaStore } from '../features/media/store';
-import { mediaService } from '../features/media/mediaService';
-import { MediaItem, SourceKey } from '../features/media/types';
-import { InfoSheet } from '../components/InfoSheet';
-import { ConfirmPopup } from '../components/ui/popup';
-import { PressableScale } from '../components/ui/pressable-scale';
+import { InfoSheet } from "../components/InfoSheet";
 import {
   AppIcon,
   ArrowLeft02Icon,
@@ -40,15 +26,20 @@ import {
   InformationCircleIcon,
   PlayIcon,
   Share01Icon,
-} from '../components/ui/Icon';
-import { Fonts, Palette, Radius, Spacing } from '../theme/theme';
+} from "../components/ui/Icon";
+import { ConfirmPopup } from "../components/ui/popup";
+import { PressableScale } from "../components/ui/pressable-scale";
+import { mediaService } from "../features/media/mediaService";
+import { useMediaStore } from "../features/media/store";
+import { MediaItem, SourceKey } from "../features/media/types";
+import { Fonts, Palette, Radius, Spacing } from "../theme/theme";
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function FullscreenViewer() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { source = 'camera', assetId } = useLocalSearchParams<{
+  const { source = "camera", assetId } = useLocalSearchParams<{
     source: SourceKey;
     assetId?: string;
   }>();
@@ -76,7 +67,8 @@ export default function FullscreenViewer() {
 
   const currentItem = items[currentIndex];
   const prevItem = currentIndex > 0 ? items[currentIndex - 1] : undefined;
-  const nextItem = currentIndex < items.length - 1 ? items[currentIndex + 1] : undefined;
+  const nextItem =
+    currentIndex < items.length - 1 ? items[currentIndex + 1] : undefined;
 
   // Auto-fetch next page near end
   useEffect(() => {
@@ -110,12 +102,12 @@ export default function FullscreenViewer() {
     try {
       const canShare = await Sharing.isAvailableAsync();
       if (!canShare) {
-        Alert.alert('Notice', 'Sharing is not supported on this device');
+        Alert.alert("Notice", "Sharing is not supported on this device");
         return;
       }
       await Sharing.shareAsync(currentItem.uri);
     } catch (err: any) {
-      Alert.alert('Share Error', err?.message || 'Could not share item');
+      Alert.alert("Share Error", err?.message || "Could not share item");
     }
   };
 
@@ -141,25 +133,27 @@ export default function FullscreenViewer() {
         setCurrentIndex(nextIdx);
       }
     } catch {
-      Alert.alert('Error', "Couldn't delete item. Try again.");
+      Alert.alert("Error", "Couldn't delete item. Try again.");
     } finally {
       setIsDeleting(false);
     }
   };
 
   const formatDateTitle = (timestamp?: number) => {
-    if (!timestamp) return '';
+    if (!timestamp) return "";
     return new Date(timestamp).toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
   // Reanimated Horizontal Carousel & Dismiss Shared Values
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
+  // Direction lock: 0 = uncommitted, 1 = horizontal swipe, 2 = vertical dismiss, 3 = zoom pan
+  const dragDirection = useSharedValue(0);
 
   // Zoom shared values for current image
   const scale = useSharedValue(1);
@@ -177,7 +171,14 @@ export default function FullscreenViewer() {
     savedZoomX.value = 0;
     savedZoomY.value = 0;
     setIsZoomed(false);
-  }, [scale, savedScale, zoomTranslateX, zoomTranslateY, savedZoomX, savedZoomY]);
+  }, [
+    scale,
+    savedScale,
+    zoomTranslateX,
+    zoomTranslateY,
+    savedZoomX,
+    savedZoomY,
+  ]);
 
   const goToNext = useCallback(() => {
     if (currentIndex < items.length - 1) {
@@ -199,7 +200,7 @@ export default function FullscreenViewer() {
 
   // 1. Single Tap: Toggle HUD
   const singleTap = Gesture.Tap().onEnd(() => {
-    'worklet';
+    "worklet";
     runOnJS(toggleBars)();
   });
 
@@ -207,7 +208,7 @@ export default function FullscreenViewer() {
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
     .onEnd(() => {
-      'worklet';
+      "worklet";
       if (scale.value > 1.1) {
         scale.value = withTiming(1);
         savedScale.value = 1;
@@ -226,14 +227,14 @@ export default function FullscreenViewer() {
   // 3. Pinch to Zoom
   const pinch = Gesture.Pinch()
     .onUpdate((e) => {
-      'worklet';
+      "worklet";
       scale.value = Math.max(1, Math.min(savedScale.value * e.scale, 5));
       if (scale.value > 1.05 && !isZoomed) {
         runOnJS(setIsZoomed)(true);
       }
     })
     .onEnd(() => {
-      'worklet';
+      "worklet";
       savedScale.value = scale.value;
       if (scale.value < 1.05) {
         scale.value = withTiming(1);
@@ -246,74 +247,115 @@ export default function FullscreenViewer() {
       }
     });
 
-  // 4. Unified Pan Gesture: handles horizontal swipe, vertical dismiss, and zoom panning
+  // 4. Unified Direction-Locked Pan Gesture
   const panGesture = Gesture.Pan()
+    .onStart(() => {
+      "worklet";
+      dragDirection.value = 0;
+    })
     .onUpdate((e) => {
-      'worklet';
+      "worklet";
       if (scale.value > 1.05) {
-        // Zoomed in: pan inside zoomed photo
+        // Zoomed in: pan inside photo
         zoomTranslateX.value = savedZoomX.value + e.translationX;
         zoomTranslateY.value = savedZoomY.value + e.translationY;
-      } else if (Math.abs(e.translationY) > Math.abs(e.translationX) && e.translationY > 0) {
-        // Dragging downwards: swipe down dismiss
-        translateY.value = e.translationY;
-      } else {
-        // Dragging horizontally: swipe between images
+        return;
+      }
+
+      // If direction is not locked yet, check which axis dominates
+      if (dragDirection.value === 0) {
+        const absX = Math.abs(e.translationX);
+        const absY = Math.abs(e.translationY);
+        if (absX > 6 && absX >= absY) {
+          dragDirection.value = 1; // Locked to horizontal carousel swipe
+        } else if (e.translationY > 8 && e.translationY > absX) {
+          dragDirection.value = 2; // Locked to vertical swipe down dismiss
+        }
+      }
+
+      if (dragDirection.value === 1) {
+        // Horizontal carousel drag
         if (currentIndex === 0 && e.translationX > 0) {
-          translateX.value = e.translationX * 0.25; // Edge resistance
+          translateX.value = e.translationX * 0.25; // Left edge resistance
         } else if (currentIndex === items.length - 1 && e.translationX < 0) {
-          translateX.value = e.translationX * 0.25; // Edge resistance
+          translateX.value = e.translationX * 0.25; // Right edge resistance
         } else {
           translateX.value = e.translationX;
         }
+      } else if (dragDirection.value === 2) {
+        // Vertical swipe down dismiss
+        translateY.value = Math.max(0, e.translationY);
       }
     })
     .onEnd((e) => {
-      'worklet';
+      "worklet";
       if (scale.value > 1.05) {
         savedZoomX.value = zoomTranslateX.value;
         savedZoomY.value = zoomTranslateY.value;
-      } else if (translateY.value > 120 || e.velocityY > 600) {
-        runOnJS(router.back)();
-      } else if (translateY.value > 0) {
-        translateY.value = withTiming(0);
-      } else {
-        const swipeDistanceThreshold = SCREEN_WIDTH * 0.18;
-        const swipeVelocityThreshold = 350;
+        return;
+      }
+
+      if (dragDirection.value === 2) {
+        // Vertical dismiss release
+        if (translateY.value > 110 || e.velocityY > 500) {
+          runOnJS(router.back)();
+        } else {
+          translateY.value = withTiming(0, { duration: 160 });
+        }
+      } else if (dragDirection.value === 1 || Math.abs(translateX.value) > 10) {
+        // Horizontal swipe release
+        const swipeDistanceThreshold = SCREEN_WIDTH * 0.15;
+        const swipeVelocityThreshold = 280;
 
         if (
-          (e.translationX < -swipeDistanceThreshold || e.velocityX < -swipeVelocityThreshold) &&
+          (translateX.value < -swipeDistanceThreshold ||
+            e.velocityX < -swipeVelocityThreshold) &&
           currentIndex < items.length - 1
         ) {
           // Slide to next image
-          translateX.value = withTiming(-SCREEN_WIDTH, { duration: 180 }, (finished) => {
-            if (finished) {
-              runOnJS(goToNext)();
-              translateX.value = 0;
-            }
-          });
+          translateX.value = withTiming(
+            -SCREEN_WIDTH,
+            { duration: 160 },
+            (finished) => {
+              if (finished) {
+                runOnJS(goToNext)();
+                translateX.value = 0;
+              }
+            },
+          );
         } else if (
-          (e.translationX > swipeDistanceThreshold || e.velocityX > swipeVelocityThreshold) &&
+          (translateX.value > swipeDistanceThreshold ||
+            e.velocityX > swipeVelocityThreshold) &&
           currentIndex > 0
         ) {
           // Slide to previous image
-          translateX.value = withTiming(SCREEN_WIDTH, { duration: 180 }, (finished) => {
-            if (finished) {
-              runOnJS(goToPrev)();
-              translateX.value = 0;
-            }
-          });
+          translateX.value = withTiming(
+            SCREEN_WIDTH,
+            { duration: 160 },
+            (finished) => {
+              if (finished) {
+                runOnJS(goToPrev)();
+                translateX.value = 0;
+              }
+            },
+          );
         } else {
           // Snap back to center
           translateX.value = withSpring(0, { damping: 25, stiffness: 320 });
         }
+      } else {
+        // Fallback snap back
+        translateX.value = withSpring(0, { damping: 25, stiffness: 320 });
+        translateY.value = withTiming(0, { duration: 160 });
       }
+
+      dragDirection.value = 0;
     });
 
   const composedGestures = Gesture.Simultaneous(
     Gesture.Exclusive(doubleTap, singleTap),
     pinch,
-    panGesture
+    panGesture,
   );
 
   const animatedSliderStyle = useAnimatedStyle(() => ({
@@ -342,15 +384,20 @@ export default function FullscreenViewer() {
         <Animated.View style={[styles.sliderContainer, animatedSliderStyle]}>
           {/* Previous Image (offset left) */}
           {prevItem && (
-            <View style={[styles.slideSlot, { transform: [{ translateX: -SCREEN_WIDTH }] }]}>
-              {prevItem.mediaType === 'video' ? (
+            <View
+              style={[
+                styles.slideSlot,
+                { transform: [{ translateX: -SCREEN_WIDTH }] },
+              ]}
+            >
+              {prevItem.mediaType === "video" ? (
                 <VideoSlide item={prevItem} isActive={false} />
               ) : (
                 <Image
                   source={{ uri: prevItem.uri }}
                   style={styles.fullImage}
                   contentFit="contain"
-                  cachePolicy="memory-disk"
+                  cachePolicy="disk"
                 />
               )}
             </View>
@@ -358,30 +405,35 @@ export default function FullscreenViewer() {
 
           {/* Current Active Image (centered) */}
           <Animated.View style={[styles.slideSlot, currentImageAnimatedStyle]}>
-            {currentItem.mediaType === 'video' ? (
+            {currentItem.mediaType === "video" ? (
               <VideoSlide item={currentItem} isActive={true} />
             ) : (
               <Image
                 source={{ uri: currentItem.uri }}
                 style={styles.fullImage}
                 contentFit="contain"
-                cachePolicy="memory-disk"
-                transition={150}
+                cachePolicy="disk"
+                transition={120}
               />
             )}
           </Animated.View>
 
           {/* Next Image (offset right) */}
           {nextItem && (
-            <View style={[styles.slideSlot, { transform: [{ translateX: SCREEN_WIDTH }] }]}>
-              {nextItem.mediaType === 'video' ? (
+            <View
+              style={[
+                styles.slideSlot,
+                { transform: [{ translateX: SCREEN_WIDTH }] },
+              ]}
+            >
+              {nextItem.mediaType === "video" ? (
                 <VideoSlide item={nextItem} isActive={false} />
               ) : (
                 <Image
                   source={{ uri: nextItem.uri }}
                   style={styles.fullImage}
                   contentFit="contain"
-                  cachePolicy="memory-disk"
+                  cachePolicy="disk"
                 />
               )}
             </View>
@@ -389,7 +441,7 @@ export default function FullscreenViewer() {
         </Animated.View>
       </GestureDetector>
 
-      {/* Floating Top Bar (VIEW-5) */}
+      {/* Floating Top Bar */}
       {showBars && (
         <Animated.View
           entering={FadeIn.duration(150)}
@@ -405,7 +457,12 @@ export default function FullscreenViewer() {
             accessibilityRole="button"
             accessibilityLabel="Back"
           >
-            <AppIcon icon={ArrowLeft02Icon} size={20} color="#FFFFFF" strokeWidth={2.2} />
+            <AppIcon
+              icon={ArrowLeft02Icon}
+              size={20}
+              color="#FFFFFF"
+              strokeWidth={2.2}
+            />
           </PressableScale>
 
           <View style={styles.headerTitleColumn}>
@@ -420,7 +477,10 @@ export default function FullscreenViewer() {
           <PressableScale
             haptic
             scaleTo={0.9}
-            style={[styles.circleButton, isFavorited && styles.circleButtonFavorited]}
+            style={[
+              styles.circleButton,
+              isFavorited && styles.circleButtonFavorited,
+            ]}
             onPress={toggleFavorite}
             accessibilityRole="button"
             accessibilityLabel="Favorite"
@@ -428,14 +488,14 @@ export default function FullscreenViewer() {
             <AppIcon
               icon={FavouriteIcon}
               size={20}
-              color={isFavorited ? '#EF4444' : '#FFFFFF'}
+              color={isFavorited ? "#EF4444" : "#FFFFFF"}
               strokeWidth={2.2}
             />
           </PressableScale>
         </Animated.View>
       )}
 
-      {/* Floating Frosted Bottom Bar (VIEW-5) */}
+      {/* Floating Frosted Bottom Bar */}
       {showBars && (
         <Animated.View
           entering={FadeIn.duration(150)}
@@ -455,7 +515,12 @@ export default function FullscreenViewer() {
               accessibilityRole="button"
               accessibilityLabel="Share"
             >
-              <AppIcon icon={Share01Icon} size={19} color="#FFFFFF" strokeWidth={2} />
+              <AppIcon
+                icon={Share01Icon}
+                size={19}
+                color="#FFFFFF"
+                strokeWidth={2}
+              />
               <Text style={styles.bottomActionText}>Share</Text>
             </PressableScale>
 
@@ -467,7 +532,12 @@ export default function FullscreenViewer() {
               accessibilityRole="button"
               accessibilityLabel="Details"
             >
-              <AppIcon icon={InformationCircleIcon} size={19} color="#FFFFFF" strokeWidth={2} />
+              <AppIcon
+                icon={InformationCircleIcon}
+                size={19}
+                color="#FFFFFF"
+                strokeWidth={2}
+              />
               <Text style={styles.bottomActionText}>Info</Text>
             </PressableScale>
 
@@ -479,8 +549,18 @@ export default function FullscreenViewer() {
               accessibilityRole="button"
               accessibilityLabel="Delete"
             >
-              <AppIcon icon={Delete02Icon} size={19} color={Palette.destructive} strokeWidth={2} />
-              <Text style={[styles.bottomActionText, { color: Palette.destructive }]}>
+              <AppIcon
+                icon={Delete02Icon}
+                size={19}
+                color={Palette.destructive}
+                strokeWidth={2}
+              />
+              <Text
+                style={[
+                  styles.bottomActionText,
+                  { color: Palette.destructive },
+                ]}
+              >
                 Delete
               </Text>
             </PressableScale>
@@ -488,7 +568,7 @@ export default function FullscreenViewer() {
         </Animated.View>
       )}
 
-      {/* Info Sheet (VIEW-9) */}
+      {/* Info Sheet */}
       <InfoSheet
         item={currentItem}
         visible={infoSheetVisible}
@@ -510,33 +590,23 @@ export default function FullscreenViewer() {
   );
 }
 
-function VideoSlide({ item, isActive }: { item: MediaItem; isActive: boolean }) {
+/**
+ * VideoSlide
+ * Renders static poster frame with Play button overlay.
+ * Only mounts ActiveVideoPlayer when explicitly tapped by user.
+ * ZERO native video player overhead while swiping or viewing!
+ */
+function VideoSlide({
+  item,
+  isActive,
+}: {
+  item: MediaItem;
+  isActive: boolean;
+}) {
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const player = useVideoPlayer(item.uri, (p) => {
-    p.loop = false;
-  });
-
-  useEffect(() => {
-    if (!isActive) {
-      player.pause();
-    }
-  }, [isActive, player]);
-
-  const handleStartPlay = () => {
-    setIsPlaying(true);
-    player.play();
-  };
-
   if (isActive && isPlaying) {
-    return (
-      <VideoView
-        player={player}
-        nativeControls
-        style={styles.videoPlayer}
-        contentFit="contain"
-      />
-    );
+    return <ActiveVideoPlayer uri={item.uri} />;
   }
 
   return (
@@ -544,20 +614,47 @@ function VideoSlide({ item, isActive }: { item: MediaItem; isActive: boolean }) 
       haptic
       scaleTo={0.98}
       style={styles.videoPosterContainer}
-      onPress={handleStartPlay}
+      onPress={() => setIsPlaying(true)}
     >
       <Image
         source={{ uri: item.uri }}
         style={styles.fullImage}
         contentFit="contain"
-        cachePolicy="memory-disk"
+        cachePolicy="disk"
       />
       <View style={styles.playButtonOverlay}>
         <View style={styles.playButtonCircle}>
-          <AppIcon icon={PlayIcon} size={28} color="#FFFFFF" strokeWidth={2.4} />
+          <AppIcon
+            icon={PlayIcon}
+            size={28}
+            color="#FFFFFF"
+            strokeWidth={2.4}
+          />
         </View>
       </View>
     </PressableScale>
+  );
+}
+
+/**
+ * ActiveVideoPlayer
+ * Isolated component that mounts useVideoPlayer ONLY when playback is requested.
+ */
+function ActiveVideoPlayer({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = false;
+    p.play();
+  });
+
+  return (
+    <View style={styles.videoContainer}>
+      <VideoView
+        player={player}
+        nativeControls
+        style={styles.videoPlayer}
+        contentFit="contain"
+      />
+    </View>
   );
 }
 
@@ -567,59 +664,64 @@ const styles = StyleSheet.create({
     backgroundColor: Palette.black,
   },
   sliderContainer: {
-    flex: 1,
     width: SCREEN_WIDTH,
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: SCREEN_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
   },
   slideSlot: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
     width: SCREEN_WIDTH,
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: SCREEN_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "absolute",
+    top: 0,
+    left: 0,
   },
   fullImage: {
     width: SCREEN_WIDTH,
-    height: '100%',
+    height: SCREEN_HEIGHT,
+  },
+  videoContainer: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
   },
   videoPlayer: {
     width: SCREEN_WIDTH,
-    height: '100%',
+    height: SCREEN_HEIGHT,
   },
   videoPosterContainer: {
     width: SCREEN_WIDTH,
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: SCREEN_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
   },
   playButtonOverlay: {
     ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   playButtonCircle: {
     width: 64,
     height: 64,
     borderRadius: Radius.pill,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "rgba(255, 255, 255, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
     paddingLeft: 3,
   },
   topBar: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.sm,
     zIndex: 50,
@@ -628,73 +730,73 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: Radius.pill,
-    backgroundColor: 'rgba(23, 23, 26, 0.72)',
+    backgroundColor: "rgba(23, 23, 26, 0.72)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   circleButtonFavorited: {
-    backgroundColor: 'rgba(239, 68, 68, 0.18)',
-    borderColor: 'rgba(239, 68, 68, 0.35)',
+    backgroundColor: "rgba(239, 68, 68, 0.18)",
+    borderColor: "rgba(239, 68, 68, 0.35)",
   },
   headerTitleColumn: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(23, 23, 26, 0.72)',
+    alignItems: "center",
+    backgroundColor: "rgba(23, 23, 26, 0.72)",
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: "rgba(255, 255, 255, 0.12)",
   },
   headerDateText: {
     fontFamily: Fonts.semiBold,
     fontSize: 13,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     letterSpacing: -0.2,
   },
   headerSubtitleText: {
     fontFamily: Fonts.medium,
     fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: "rgba(255, 255, 255, 0.65)",
     marginTop: 1,
   },
   bottomBarWrapper: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     zIndex: 50,
   },
   bottomPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: 'rgba(23, 23, 26, 0.88)',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    backgroundColor: "rgba(23, 23, 26, 0.88)",
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.14)',
+    borderColor: "rgba(255, 255, 255, 0.14)",
     paddingHorizontal: Spacing.xl,
     paddingVertical: 9,
     minWidth: 260,
     gap: Spacing.xl,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.5,
     shadowRadius: 16,
     elevation: 8,
   },
   bottomActionButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: 4,
     paddingHorizontal: 4,
   },
   bottomActionText: {
     fontFamily: Fonts.medium,
     fontSize: 11,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     letterSpacing: -0.1,
   },
 });

@@ -117,8 +117,8 @@ $appConfig = Get-Content $appJsonPath -Raw | ConvertFrom-Json
 $version = $appConfig.expo.version
 $versionCode = [int]$appConfig.expo.android.versionCode
 
-$artifact = Join-Path $releaseDir "luma-gallery-$version.apk"
-Write-Step "Building Luma Gallery $version (versionCode $versionCode, $Abi)"
+$artifact = Join-Path $releaseDir "glimpse-$version.apk"
+Write-Step "Building Glimpse $version (versionCode $versionCode, $Abi)"
 
 # --- Checks ------------------------------------------------------------------
 if (-not $SkipChecks) {
@@ -135,7 +135,7 @@ if ($NoPrebuild) {
 }
 else {
     Write-Step 'Regenerating the native Android project from app.json'
-    Invoke-Native 'npx' @('expo', 'prebuild', '--platform', 'android')
+    Invoke-Native 'npx' @('expo', 'prebuild', '--platform', 'android', '--clean')
 }
 
 Write-Step 'Locating the Android SDK'

@@ -27,7 +27,7 @@ export function PermissionGate({ canAskAgain, onRequestAccess }: PermissionGateP
         <Text style={styles.title}>Allow access to your photos</Text>
 
         <Text style={styles.explanation}>
-          Luma Gallery displays and manages the photos and videos stored directly on your phone.
+          Glimpse displays and manages the photos and videos stored directly on your phone.
           It runs completely offline and never uploads your media.
         </Text>
 

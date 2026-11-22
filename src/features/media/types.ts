@@ -3,6 +3,7 @@ export type MediaType = 'photo' | 'video';
 export interface MediaItem {
   id: string;
   uri: string;
+  fileUri?: string;
   mediaType: MediaType;
   width: number;
   height: number;

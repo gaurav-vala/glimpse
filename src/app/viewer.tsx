@@ -139,15 +139,17 @@ export default function FullscreenViewer() {
     }
   };
 
-  const formatDateTitle = (timestamp?: number) => {
-    if (!timestamp) return "";
-    return new Date(timestamp).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+const viewerDateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const formatDateTitle = (timestamp?: number) => {
+  if (!timestamp) return "";
+  return viewerDateFormatter.format(new Date(timestamp));
+};
 
   // Reanimated Horizontal Carousel & Dismiss Shared Values
   const translateX = useSharedValue(0);
@@ -397,7 +399,7 @@ export default function FullscreenViewer() {
                   source={{ uri: prevItem.uri }}
                   style={styles.fullImage}
                   contentFit="contain"
-                  cachePolicy="disk"
+                  cachePolicy="memory-disk"
                 />
               )}
             </View>
@@ -412,8 +414,9 @@ export default function FullscreenViewer() {
                 source={{ uri: currentItem.uri }}
                 style={styles.fullImage}
                 contentFit="contain"
-                cachePolicy="disk"
-                transition={120}
+                cachePolicy="memory-disk"
+                priority="high"
+                transition={80}
               />
             )}
           </Animated.View>
@@ -433,7 +436,7 @@ export default function FullscreenViewer() {
                   source={{ uri: nextItem.uri }}
                   style={styles.fullImage}
                   contentFit="contain"
-                  cachePolicy="disk"
+                  cachePolicy="memory-disk"
                 />
               )}
             </View>
@@ -620,7 +623,7 @@ function VideoSlide({
         source={{ uri: item.uri }}
         style={styles.fullImage}
         contentFit="contain"
-        cachePolicy="disk"
+        cachePolicy="memory-disk"
       />
       <View style={styles.playButtonOverlay}>
         <View style={styles.playButtonCircle}>
@@ -653,6 +656,7 @@ function ActiveVideoPlayer({ uri }: { uri: string }) {
         nativeControls
         style={styles.videoPlayer}
         contentFit="contain"
+        surfaceType="surfaceView"
       />
     </View>
   );

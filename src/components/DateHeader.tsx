@@ -8,6 +8,18 @@ interface DateHeaderProps {
   onSelectAll?: () => void;
 }
 
+// Hoisted static formatters to avoid expensive re-instantiation in loops (js-hoist-intl)
+const shortDateFormatter = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+});
+
+const monthYearFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'long',
+  year: 'numeric',
+});
+
 /**
  * Format timestamp into human header:
  * "Today", "Yesterday", "Mon, 3 Nov", or "October 2025" (GRID-6).
@@ -34,17 +46,10 @@ export function formatDateHeader(timestamp: number): string {
 
   const diffDays = Math.round((now.getTime() - date.getTime()) / (1000 * 3600 * 24));
   if (diffDays < 30) {
-    return date.toLocaleDateString(undefined, {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-    });
+    return shortDateFormatter.format(date);
   }
 
-  return date.toLocaleDateString(undefined, {
-    month: 'long',
-    year: 'numeric',
-  });
+  return monthYearFormatter.format(date);
 }
 
 export const DateHeader = memo(function DateHeader({ title, onSelectAll }: DateHeaderProps) {

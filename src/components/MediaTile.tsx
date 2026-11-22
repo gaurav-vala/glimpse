@@ -1,9 +1,10 @@
-import React, { memo, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import React, { memo, useEffect, useCallback } from 'react';
+import { StyleSheet, View, Text, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { AppIcon, PlayIcon, Tick02Icon } from './ui/Icon';
 import { DarkTheme, Typography, Radius } from '../theme/theme';
+import { useSelectionStore } from '../features/selection/store';
 
 interface MediaTileProps {
   id: string;
@@ -11,10 +12,7 @@ interface MediaTileProps {
   mediaType: 'photo' | 'video';
   duration: number;
   tileSize: number;
-  isSelectionMode: boolean;
-  isSelected: boolean;
   onPress: (id: string) => void;
-  onLongPress: (id: string) => void;
 }
 
 function formatDuration(sec: number): string {
@@ -27,6 +25,7 @@ function formatDuration(sec: number): string {
  * MediaTile
  * Modern squircle tile with rounded corners (radius 14),
  * subtle border, and sleek frosted video badge.
+ * Subscribes internally to selection state for maximum FlashList virtualization performance.
  */
 export const MediaTile = memo(function MediaTile({
   id,
@@ -34,27 +33,45 @@ export const MediaTile = memo(function MediaTile({
   mediaType,
   duration,
   tileSize,
-  isSelectionMode,
-  isSelected,
   onPress,
-  onLongPress,
 }: MediaTileProps) {
+  const isSelected = useSelectionStore((s) => s.selectedIds.has(id));
+  const isSelectionMode = useSelectionStore((s) => s.isSelectionMode);
+  const toggleItem = useSelectionStore((s) => s.toggleItem);
+  const enterSelectionMode = useSelectionStore((s) => s.enterSelectionMode);
+
+  const handlePress = useCallback(() => {
+    if (isSelectionMode) {
+      toggleItem(id);
+    } else {
+      onPress(id);
+    }
+  }, [id, isSelectionMode, toggleItem, onPress]);
+
+  const handleLongPress = useCallback(() => {
+    if (!isSelectionMode) {
+      enterSelectionMode(id);
+    } else {
+      toggleItem(id);
+    }
+  }, [id, isSelectionMode, enterSelectionMode, toggleItem]);
+
   return (
-    <TouchableOpacity
+    <Pressable
       style={[
         styles.container,
         { width: tileSize, height: tileSize },
       ]}
-      activeOpacity={0.8}
-      onPress={() => onPress(id)}
-      onLongPress={() => onLongPress(id)}
+      onPress={handlePress}
+      onLongPress={handleLongPress}
     >
       <Image
         source={{ uri }}
-        style={styles.image}
+        style={[styles.image, { width: tileSize, height: tileSize }]}
         contentFit="cover"
-        cachePolicy="disk"
-        transition={100}
+        cachePolicy="memory-disk"
+        priority="low"
+        transition={0}
       />
 
       {/* Video duration badge & play glyph (GRID-4) */}
@@ -71,7 +88,7 @@ export const MediaTile = memo(function MediaTile({
           <AnimatedCheckCircle isSelected={isSelected} />
         </View>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 });
 

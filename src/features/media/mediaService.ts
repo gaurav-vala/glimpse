@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as MediaLibrary from 'expo-media-library/legacy';
 import { MediaItem, Album, PermissionStatusResult } from './types';
@@ -126,11 +127,22 @@ class MediaService {
 
   /**
    * Convert an expo-media-library asset into a plain MediaItem.
+   * On Android, resolves to system ContentProvider URIs (content://media/external/...)
+   * which leverages Android MediaStore's native thumbnail cache and is required by
+   * ExoPlayer to bypass Scoped Storage file restrictions.
    */
   private formatAsset(asset: MediaLibrary.Asset): MediaItem {
+    const isAndroid = Platform.OS === 'android';
+    let resolvedUri = asset.uri;
+    if (isAndroid && !this._demoMode && asset.id) {
+      const type = asset.mediaType === 'video' ? 'video' : 'images';
+      resolvedUri = `content://media/external/${type}/media/${asset.id}`;
+    }
+
     return {
       id: asset.id,
-      uri: asset.uri,
+      uri: resolvedUri,
+      fileUri: asset.uri,
       mediaType: asset.mediaType === 'video' ? 'video' : 'photo',
       width: asset.width || 0,
       height: asset.height || 0,
@@ -300,7 +312,13 @@ class MediaService {
       });
 
       if (res.assets.length > 0) {
-        const cover = res.assets[0].uri;
+        const asset = res.assets[0];
+        const isAndroid = Platform.OS === 'android';
+        let cover = asset.uri;
+        if (isAndroid && !this._demoMode && asset.id) {
+          const type = asset.mediaType === 'video' ? 'video' : 'images';
+          cover = `content://media/external/${type}/media/${asset.id}`;
+        }
         this.albumCoverCache.set(albumId, cover);
         return cover;
       }

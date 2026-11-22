@@ -13,6 +13,16 @@ import {
 import { Popup } from './ui/popup';
 import { DarkTheme, Fonts, Spacing } from '../theme/theme';
 
+// Hoisted Intl formatter to prevent recreation on render (js-hoist-intl)
+const infoDateFormatter = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
 interface InfoSheetProps {
   item: MediaItem;
   visible: boolean;
@@ -44,14 +54,7 @@ export function InfoSheet({ item, visible, onClose }: InfoSheetProps) {
     };
   }, [visible, item]);
 
-  const dateStr = new Date(item.creationTime).toLocaleString(undefined, {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const dateStr = infoDateFormatter.format(new Date(item.creationTime));
 
   const megapixels =
     item.width > 0 && item.height > 0

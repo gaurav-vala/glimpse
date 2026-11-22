@@ -45,8 +45,6 @@ export function MediaGrid({
 }: MediaGridProps) {
   const isSelectionMode = useSelectionStore((s) => s.isSelectionMode);
   const selectedIds = useSelectionStore((s) => s.selectedIds);
-  const toggleItem = useSelectionStore((s) => s.toggleItem);
-  const enterSelectionMode = useSelectionStore((s) => s.enterSelectionMode);
   const selectAll = useSelectionStore((s) => s.selectAll);
 
   // Group items by day for date headers (GRID-6)
@@ -90,25 +88,10 @@ export function MediaGrid({
 
   const handleTilePress = useCallback(
     (id: string) => {
-      if (isSelectionMode) {
-        toggleItem(id);
-      } else {
-        const found = items.find((i) => i.id === id);
-        if (found) onItemPress(found);
-      }
+      const found = items.find((i) => i.id === id);
+      if (found) onItemPress(found);
     },
-    [isSelectionMode, toggleItem, items, onItemPress]
-  );
-
-  const handleTileLongPress = useCallback(
-    (id: string) => {
-      if (!isSelectionMode) {
-        enterSelectionMode(id);
-      } else {
-        toggleItem(id);
-      }
-    },
-    [isSelectionMode, enterSelectionMode, toggleItem]
+    [items, onItemPress]
   );
 
   const handleSelectDay = useCallback(
@@ -130,7 +113,6 @@ export function MediaGrid({
       }
 
       const media = item.item;
-      const isSelected = selectedIds.has(media.id);
 
       return (
         <View style={styles.tileWrapper}>
@@ -140,15 +122,12 @@ export function MediaGrid({
             mediaType={media.mediaType}
             duration={media.duration}
             tileSize={TILE_SIZE}
-            isSelectionMode={isSelectionMode}
-            isSelected={isSelected}
             onPress={handleTilePress}
-            onLongPress={handleTileLongPress}
           />
         </View>
       );
     },
-    [selectedIds, isSelectionMode, handleTilePress, handleTileLongPress, handleSelectDay]
+    [isSelectionMode, handleTilePress, handleSelectDay]
   );
 
   const getItemType = useCallback((item: GridItem) => {
@@ -198,6 +177,7 @@ export function MediaGrid({
           layout.span = 1;
         }
       }}
+      drawDistance={1200}
       onEndReached={onLoadNextPage}
       onEndReachedThreshold={0.5}
       refreshControl={

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Linking } from 'react-native';
+import { StyleSheet, View, Text, Pressable, Linking } from 'react-native';
 import { AppIcon, Shield01Icon } from './ui/Icon';
 import { DarkTheme, Palette, Typography, Spacing, Radius } from '../theme/theme';
 
@@ -32,21 +32,19 @@ export function PermissionGate({ canAskAgain, onRequestAccess }: PermissionGateP
         </Text>
 
         {canAskAgain ? (
-          <TouchableOpacity
-            style={styles.primaryButton}
+          <Pressable
+            style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.8 }]}
             onPress={onRequestAccess}
-            activeOpacity={0.8}
           >
             <Text style={styles.primaryButtonText}>Allow access</Text>
-          </TouchableOpacity>
+          </Pressable>
         ) : (
-          <TouchableOpacity
-            style={styles.primaryButton}
+          <Pressable
+            style={({ pressed }) => [styles.primaryButton, pressed && { opacity: 0.8 }]}
             onPress={handleOpenSettings}
-            activeOpacity={0.8}
           >
             <Text style={styles.primaryButtonText}>Open Settings</Text>
-          </TouchableOpacity>
+          </Pressable>
         )}
       </View>
     </View>

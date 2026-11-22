@@ -3,7 +3,7 @@ export const Palette = {
   black: '#000000',
   charcoal: '#0c0d11',
   surfaceDark: '#12141a',
-  surfaceElevatedDark: '#1a1d28',
+  surfaceElevatedDark: '#181b24',
   borderDark: 'rgba(255, 255, 255, 0.08)',
   borderStrongDark: 'rgba(255, 255, 255, 0.16)',
 
@@ -20,7 +20,7 @@ export const Palette = {
   accentBlueGlow: 'rgba(37, 99, 235, 0.25)',
 
   destructive: '#EF4444',
-  destructiveSoft: 'rgba(239, 68, 68, 0.12)',
+  destructiveSoft: 'rgba(239, 68, 68, 0.14)',
 
   success: '#10B981',
   warning: '#F59E0B',
@@ -109,44 +109,52 @@ export const Spacing = {
   xxxl: 32,
 } as const;
 
+export const Fonts = {
+  regular: 'PlusJakartaSans_400Regular',
+  medium: 'PlusJakartaSans_500Medium',
+  semiBold: 'PlusJakartaSans_600SemiBold',
+  bold: 'PlusJakartaSans_700Bold',
+  extraBold: 'PlusJakartaSans_800ExtraBold',
+} as const;
+
 export const Typography = {
   largeTitle: {
+    fontFamily: Fonts.bold,
     fontSize: 28,
     lineHeight: 34,
-    fontWeight: '700' as const,
     letterSpacing: -0.6,
   },
   screenTitle: {
+    fontFamily: Fonts.bold,
     fontSize: 22,
     lineHeight: 28,
-    fontWeight: '600' as const,
     letterSpacing: -0.4,
   },
   sectionHeader: {
+    fontFamily: Fonts.semiBold,
     fontSize: 14,
     lineHeight: 18,
-    fontWeight: '600' as const,
     letterSpacing: -0.2,
   },
   body: {
+    fontFamily: Fonts.regular,
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: '400' as const,
   },
   label: {
+    fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: '500' as const,
   },
   caption: {
+    fontFamily: Fonts.regular,
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: '400' as const,
   },
   badge: {
+    fontFamily: Fonts.bold,
     fontSize: 11,
     lineHeight: 14,
-    fontWeight: '600' as const,
     letterSpacing: 0.1,
   },
 } as const;

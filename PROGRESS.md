@@ -1,30 +1,32 @@
 # Luma Gallery - Progress Log
 
-## Phase 0: Setup and Spikes (Completed)
+## Phase 1: Permissions and the Camera Tab (Completed)
 
 ### What Was Built
-- Configured app identity in `app.json` as **Luma Gallery** (`com.gaurav444.lumagallery`, locked to portrait, edge-to-edge).
-- Configured `expo-media-library` config plugin with granular permissions (`['photo', 'video']`, zero audio).
-- Installed Expo SDK 58 compatible dependencies: `expo-media-library`, `@shopify/flash-list`, `expo-video`, `expo-sharing`, `expo-file-system`, `zustand`, `@expo/vector-icons`, and configured ESLint flat config.
-- Established design tokens & OLED theme (`src/theme/theme.ts`, `src/theme/useTheme.ts`) matching Luma's high-contrast dark palette.
-- Created `src/features/media/mediaService.ts` strictly isolating all `expo-media-library` operations.
-- Created `src/features/media/store.ts` (Zustand collection store) and `src/features/selection/store.ts` (Zustand multi-select store).
-- Added `scripts/build-apk.ps1` for local standalone release APK generation.
-- Implemented Phase 0 Verification & Benchmark screen in `src/app/index.tsx` validating permission gating, 90-item pagination, video badges, and Reanimated 4 pinch/zoom gestures.
-- Authored `SPIKES.md` documenting decisions across all 5 spikes.
+- **Typography & Iconography Upgrade**:
+  - Integrated **Plus Jakarta Sans** (`@expo-google-fonts/plus-jakarta-sans`: 400 Regular, 500 Medium, 600 SemiBold, 700 Bold, 800 ExtraBold) loaded cleanly at root.
+  - Centralized **Hugeicons** wrapper (`src/components/ui/Icon.tsx`) consuming `@hugeicons/core-free-icons` and `@hugeicons/react-native`.
+- **Navigation Architecture**:
+  - Root `Stack` with Permission Gate and font readiness check (`src/app/_layout.tsx`).
+  - Two-tab bottom bar (`src/app/(tabs)/_layout.tsx`) featuring **Camera** (`Camera01Icon`) and **Albums** (`Folder01Icon`).
+- **Camera Screen (Strictly DCIM/Camera)**:
+  - `src/app/(tabs)/index.tsx` scoped to the DCIM/Camera collection.
+  - Virtualized `MediaGrid` using `@shopify/flash-list` with 3 columns, 2dp gaps, and square cover-cropped tiles (`GRID-2`).
+  - Date grouping headers ("Today", "Yesterday", "Mon, 3 Nov", "October 2025") (`GRID-6`).
+  - Video tiles with duration badge (`m:ss`) and play glyph (`GRID-4`).
+  - Pull-to-refresh (`GRID-9`) and empty state (`GRID-8`).
+- **Selection & Bulk Action Support**:
+  - Long-press enters Selection Mode with checkmark overlays (`SEL-1`, `SEL-3`).
+  - `SelectionTopBar` displaying "N selected" with close/cancel (`SEL-2`).
+  - `SelectionBottomBar` offering single-share and bulk deletion (`SEL-4`, `DEL-2`).
+- **Albums Tab**:
+  - `src/app/(tabs)/albums.tsx`: 2-column grid of device albums with rounded covers (`radius: 12`), album titles, and item counts (`ALB-1` to `ALB-5`).
+- **Verification & Health**:
+  - `npx tsc --noEmit` passed (0 errors).
+  - `npx eslint .` passed (0 errors, 0 warnings).
+  - `npx expo-doctor` passed (20/20 checks).
 
-### Verified Requirements & Status
-- **PERM-1 & PERM-2**: Granular photo/video permission flow configured without audio access.
-- **GRID-2, GRID-4, GRID-5**: 3-column 2dp gap grid layout, video duration badges, and neutral placeholder rendering.
-- **Quality Checks**: `npx tsc --noEmit` passed (0 errors), `npx eslint .` passed (0 warnings), `npx expo-doctor` passed (20/20 checks).
+---
 
-### Key Decisions & Spike Outcomes
-1. **Granular Permissions**: Restricted to `photo` and `video` at both plugin manifest and API call levels.
-2. **Library Access**: Isolated in `mediaService.ts` using fast cursor queries without metadata bloat (`resolveWithFullInfo: false`).
-3. **Video Posters**: Drawn directly from `asset.uri` by `expo-image` without requiring heavy external thumbnail extraction libraries.
-4. **Viewer Gestures**: Reanimated 4 + Gesture Handler worklets chosen over deprecated third-party packages for stability on React 19.
-
-### Next Phase
-- **Phase 1: Permissions and the Camera Tab**:
-  - Full-screen permission gate & fallback settings flow (`PERM-1` to `PERM-4`).
-  - Scoped DCIM/Camera tab with FlashList virtualized grid, pull-to-refresh, empty states, and scroll preservation (`GRID-1` to `GRID-8`).
+## Phase 0: Setup and Spikes (Completed)
+- Baseline setup, granular permissions plugin configuration, `mediaService.ts` isolation, high-fidelity demo media provider for Expo Go on Android 14, and `SPIKES.md`.

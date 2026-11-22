@@ -1,0 +1,58 @@
+import React from 'react';
+import { HugeiconsIcon } from '@hugeicons/react-native';
+import {
+  Camera01Icon,
+  Folder01Icon,
+  PlayIcon,
+  Delete02Icon,
+  Share01Icon,
+  InformationCircleIcon,
+  ArrowLeft02Icon,
+  Cancel01Icon,
+  CheckmarkCircle01Icon,
+  Tick02Icon,
+  RefreshIcon,
+  Shield01Icon,
+  Image01Icon,
+  SparklesIcon,
+} from '@hugeicons/core-free-icons';
+
+export {
+  Camera01Icon,
+  Folder01Icon,
+  PlayIcon,
+  Delete02Icon,
+  Share01Icon,
+  InformationCircleIcon,
+  ArrowLeft02Icon,
+  Cancel01Icon,
+  CheckmarkCircle01Icon,
+  Tick02Icon,
+  RefreshIcon,
+  Shield01Icon,
+  Image01Icon,
+  SparklesIcon,
+};
+
+export interface AppIconProps {
+  icon: any;
+  size?: number;
+  color?: any;
+  strokeWidth?: number;
+}
+
+export function AppIcon({
+  icon,
+  size = 20,
+  color = '#FFFFFF',
+  strokeWidth = 1.8,
+}: AppIconProps) {
+  return (
+    <HugeiconsIcon
+      icon={icon}
+      size={size}
+      color={color}
+      strokeWidth={strokeWidth}
+    />
+  );
+}

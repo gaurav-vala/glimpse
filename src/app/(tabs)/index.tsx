@@ -20,8 +20,9 @@ import { useMainTabStore } from '../../features/navigation/tabStore';
 import { mediaService } from '../../features/media/mediaService';
 import { MediaItem } from '../../features/media/types';
 import { DarkTheme, Palette, Spacing, Fonts } from '../../theme/theme';
-import { SparklesIcon } from '../../components/ui/Icon';
+import { SparklesIcon, Download01Icon } from '../../components/ui/Icon';
 import { Button } from '../../components/ui/button';
+import { useUpdateStore } from '../../features/updates/useUpdateStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -37,6 +38,9 @@ export default function CameraTab() {
 
   const activeTab = useMainTabStore((s) => s.activeTab);
   const setActiveTab = useMainTabStore((s) => s.setActiveTab);
+
+  const hasUpdate = useUpdateStore((s) => s.hasUpdate);
+  const openUpdateModal = useUpdateStore((s) => s.openModal);
 
   // Reanimated Horizontal Paging
   const translateX = useSharedValue(-activeTab * SCREEN_WIDTH);
@@ -136,19 +140,31 @@ export default function CameraTab() {
             {!isSelectionMode && (
               <View style={styles.header}>
                 <Text style={styles.title}>Camera</Text>
-                {mediaService.isDemoMode && (
-                  <Button
-                    label="Add Photo"
-                    icon={SparklesIcon}
-                    size="sm"
-                    shape="pill"
-                    variant="frosted"
-                    onPress={() => {
-                      mediaService.simulateAddPhoto();
-                      refresh();
-                    }}
-                  />
-                )}
+                <View style={styles.headerRight}>
+                  {hasUpdate && (
+                    <Button
+                      label="Update"
+                      icon={Download01Icon}
+                      size="sm"
+                      shape="pill"
+                      variant="primary"
+                      onPress={openUpdateModal}
+                    />
+                  )}
+                  {mediaService.isDemoMode && (
+                    <Button
+                      label="Add Photo"
+                      icon={SparklesIcon}
+                      size="sm"
+                      shape="pill"
+                      variant="frosted"
+                      onPress={() => {
+                        mediaService.simulateAddPhoto();
+                        refresh();
+                      }}
+                    />
+                  )}
+                </View>
               </View>
             )}
 
@@ -207,5 +223,10 @@ const styles = StyleSheet.create({
     fontSize: 26,
     color: DarkTheme.colors.text,
     letterSpacing: -0.6,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
 });

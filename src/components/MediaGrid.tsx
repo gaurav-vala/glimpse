@@ -1,38 +1,39 @@
-import React, { useCallback, useMemo } from 'react';
+import { FlashList } from "@shopify/flash-list";
+import { useCallback, useMemo } from "react";
 import {
-  StyleSheet,
-  View,
-  Text,
-  Dimensions,
-  RefreshControl,
-  ActivityIndicator,
-} from 'react-native';
-import { FlashList } from '@shopify/flash-list';
-import { MediaItem } from '../features/media/types';
-import { MediaTile } from './MediaTile';
-import { DateHeader, formatDateHeader } from './DateHeader';
-import { AppIcon, Image01Icon } from './ui/Icon';
-import { DarkTheme, Spacing } from '../theme/theme';
-import { useSelectionStore } from '../features/selection/store';
+    ActivityIndicator,
+    Dimensions,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    View,
+} from "react-native";
+import { MediaItem } from "../features/media/types";
+import { useSelectionStore } from "../features/selection/store";
+import { DarkTheme, Spacing } from "../theme/theme";
+import { DateHeader, formatDateHeader } from "./DateHeader";
+import { MediaTile } from "./MediaTile";
+import { AppIcon, Image01Icon } from "./ui/Icon";
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const NUM_COLUMNS = 3;
 const HORIZONTAL_PADDING = Spacing.md; // 12dp outer margin
 const COLUMN_GAP = 6; // 6dp spacing between floating cards
-const AVAILABLE_WIDTH = SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - COLUMN_GAP * (NUM_COLUMNS - 1);
+const AVAILABLE_WIDTH =
+  SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - COLUMN_GAP * (NUM_COLUMNS - 1);
 const TILE_SIZE = AVAILABLE_WIDTH / NUM_COLUMNS;
 
 type GridItem =
-  | { type: 'header'; id: string; title: string; dayItemIds: string[] }
-  | { type: 'tile'; id: string; item: MediaItem };
+  | { type: "header"; id: string; title: string; dayItemIds: string[] }
+  | { type: "tile"; id: string; item: MediaItem };
 
 interface MediaGridProps {
   items: MediaItem[];
-  status: 'idle' | 'loading' | 'refreshing' | 'error';
+  status: "idle" | "loading" | "refreshing" | "error";
   hasNextPage: boolean;
   onLoadNextPage: () => void;
   onRefresh: () => void;
-  onItemPress: (item: MediaItem) => void;
+  onItemPress: (item: MediaItem, index?: number) => void;
 }
 
 export function MediaGrid({
@@ -49,8 +50,20 @@ export function MediaGrid({
 
   // Group items by day for date headers (GRID-6)
   const gridData = useMemo<GridItem[]>(() => {
+    if (__DEV__) {
+      console.log(
+        "[MediaGrid Items Top 10]",
+        items.slice(0, 10).map((i) => ({
+          id: i.id,
+          filename: i.filename,
+          creationTime: i.creationTime,
+          dateStr: new Date(i.creationTime).toISOString(),
+          header: formatDateHeader(i.creationTime),
+        })),
+      );
+    }
     const list: GridItem[] = [];
-    let currentHeader = '';
+    let currentHeader = "";
     let currentDayIds: string[] = [];
     let currentHeaderIndex = -1;
 
@@ -64,7 +77,7 @@ export function MediaGrid({
         currentDayIds = [item.id];
         currentHeaderIndex = list.length;
         list.push({
-          type: 'header',
+          type: "header",
           id: `header-${currentHeader}-${item.id}`,
           title: currentHeader,
           dayItemIds: [],
@@ -73,7 +86,7 @@ export function MediaGrid({
         currentDayIds.push(item.id);
       }
       list.push({
-        type: 'tile',
+        type: "tile",
         id: item.id,
         item,
       });
@@ -88,26 +101,32 @@ export function MediaGrid({
 
   const handleTilePress = useCallback(
     (id: string) => {
-      const found = items.find((i) => i.id === id);
-      if (found) onItemPress(found);
+      const foundIndex = items.findIndex((i) => i.id === id);
+      if (foundIndex >= 0) {
+        onItemPress(items[foundIndex], foundIndex);
+      }
     },
-    [items, onItemPress]
+    [items, onItemPress],
   );
 
   const handleSelectDay = useCallback(
     (ids: string[]) => {
       selectAll([...Array.from(selectedIds), ...ids]);
     },
-    [selectAll, selectedIds]
+    [selectAll, selectedIds],
   );
 
   const renderItem = useCallback(
     ({ item }: { item: GridItem }) => {
-      if (item.type === 'header') {
+      if (item.type === "header") {
         return (
           <DateHeader
             title={item.title}
-            onSelectAll={isSelectionMode ? () => handleSelectDay(item.dayItemIds) : undefined}
+            onSelectAll={
+              isSelectionMode
+                ? () => handleSelectDay(item.dayItemIds)
+                : undefined
+            }
           />
         );
       }
@@ -127,7 +146,7 @@ export function MediaGrid({
         </View>
       );
     },
-    [isSelectionMode, handleTilePress, handleSelectDay]
+    [isSelectionMode, handleTilePress, handleSelectDay],
   );
 
   const getItemType = useCallback((item: GridItem) => {
@@ -138,7 +157,7 @@ export function MediaGrid({
 
   // Empty library state (GRID-8)
   const ListEmptyComponent = useMemo(() => {
-    if (status === 'loading') {
+    if (status === "loading") {
       return (
         <View style={styles.centerContainer}>
           <ActivityIndicator color={DarkTheme.colors.accent} size="large" />
@@ -147,9 +166,15 @@ export function MediaGrid({
     }
     return (
       <View style={styles.emptyContainer}>
-        <AppIcon icon={Image01Icon} size={48} color={DarkTheme.colors.textMuted} />
+        <AppIcon
+          icon={Image01Icon}
+          size={48}
+          color={DarkTheme.colors.textMuted}
+        />
         <Text style={styles.emptyTitle}>No photos or videos yet</Text>
-        <Text style={styles.emptySubtitle}>Media taken with your phone will show up here.</Text>
+        <Text style={styles.emptySubtitle}>
+          Media taken with your phone will show up here.
+        </Text>
       </View>
     );
   }, [status]);
@@ -171,7 +196,7 @@ export function MediaGrid({
       getItemType={getItemType}
       numColumns={NUM_COLUMNS}
       overrideItemLayout={(layout, item) => {
-        if (item.type === 'header') {
+        if (item.type === "header") {
           layout.span = NUM_COLUMNS;
         } else {
           layout.span = 1;
@@ -182,7 +207,7 @@ export function MediaGrid({
       onEndReachedThreshold={0.5}
       refreshControl={
         <RefreshControl
-          refreshing={status === 'refreshing'}
+          refreshing={status === "refreshing"}
           onRefresh={onRefresh}
           tintColor={DarkTheme.colors.accent}
           colors={[DarkTheme.colors.accent]}
@@ -205,30 +230,30 @@ const styles = StyleSheet.create({
   },
   centerContainer: {
     paddingTop: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyContainer: {
     paddingTop: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: Spacing.xl,
     gap: Spacing.sm,
   },
   emptyTitle: {
     color: DarkTheme.colors.text,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: Spacing.sm,
   },
   emptySubtitle: {
     color: DarkTheme.colors.textMuted,
     fontSize: 13,
-    textAlign: 'center',
+    textAlign: "center",
   },
   footerLoader: {
     paddingVertical: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

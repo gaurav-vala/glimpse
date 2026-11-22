@@ -40,6 +40,7 @@ export const AlbumCard = memo(function AlbumCard({
           {album.coverUri ? (
             <Image
               source={{ uri: album.coverUri }}
+              recyclingKey={album.id}
               style={styles.coverImage}
               contentFit="cover"
               cachePolicy="memory-disk"

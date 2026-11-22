@@ -67,11 +67,12 @@ export const MediaTile = memo(function MediaTile({
     >
       <Image
         source={{ uri }}
+        recyclingKey={id}
         style={[styles.image, { width: tileSize, height: tileSize }]}
         contentFit="cover"
         cachePolicy="memory-disk"
         priority="low"
-        transition={0}
+        transition={100}
       />
 
       {/* Video duration badge & play glyph (GRID-4) */}

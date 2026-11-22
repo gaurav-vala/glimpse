@@ -3,22 +3,23 @@ import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  BackHandler,
+  Platform,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { FlatList, Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   FadeIn,
   FadeOut,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -55,28 +56,51 @@ const formatDateTitle = (timestamp?: number) => {
 export default function FullscreenViewer() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: SCREEN_WIDTH } = useWindowDimensions();
-  const { source = "camera", assetId } = useLocalSearchParams<{
+  const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
+
+  const {
+    source = "camera",
+    assetId,
+    initialIndex: initialIndexParam,
+  } = useLocalSearchParams<{
     source: SourceKey;
     assetId?: string;
+    initialIndex?: string;
   }>();
 
   const collection = useMediaStore((state) => state.getCollection(source));
   const removeItems = useMediaStore((state) => state.removeItems);
   const loadNextPage = useMediaStore((state) => state.loadNextPage);
+  const loadInitial = useMediaStore((state) => state.loadInitial);
+
+  // If source hasn't been loaded yet, trigger loadInitial
+  useEffect(() => {
+    if (collection.items.length === 0 && collection.status !== "loading") {
+      loadInitial(source, source === "camera");
+    }
+  }, [collection.items.length, collection.status, loadInitial, source]);
 
   const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set());
   const items = useMemo(() => {
     return collection.items.filter((i) => !deletedIds.has(i.id));
   }, [collection.items, deletedIds]);
 
-  const [initialIndex] = useState(() => {
-    const idx = collection.items.findIndex((i) => i.id === assetId);
-    return idx >= 0 ? idx : 0;
-  });
+  // Determine starting index accurately from query params or assetId search
+  const computedInitialIndex = useMemo(() => {
+    if (initialIndexParam !== undefined) {
+      const parsed = parseInt(initialIndexParam, 10);
+      if (!isNaN(parsed) && parsed >= 0 && parsed < collection.items.length) {
+        return parsed;
+      }
+    }
+    if (assetId && collection.items.length > 0) {
+      const idx = collection.items.findIndex((i) => i.id === assetId);
+      if (idx >= 0) return idx;
+    }
+    return 0;
+  }, [initialIndexParam, assetId, collection.items]);
 
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
-
+  const [currentIndex, setCurrentIndex] = useState(computedInitialIndex);
   const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [showBars, setShowBars] = useState(true);
   const [infoSheetVisible, setInfoSheetVisible] = useState(false);
@@ -84,11 +108,49 @@ export default function FullscreenViewer() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
 
+  const flatListRef = useRef<FlatList<MediaItem>>(null);
+  const initialScrollDone = useRef(false);
+
+  // Ensure scroll is positioned at initial index once items are populated
+  useEffect(() => {
+    if (!initialScrollDone.current && items.length > 0) {
+      initialScrollDone.current = true;
+      if (computedInitialIndex > 0 && computedInitialIndex < items.length) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({
+            index: computedInitialIndex,
+            animated: false,
+          });
+        }, 10);
+      }
+    }
+  }, [items.length, computedInitialIndex]);
+
+  // FIX-2: Priority Hardware Back Button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        if (infoSheetVisible) {
+          setInfoSheetVisible(false);
+          return true;
+        }
+        if (deleteConfirmVisible) {
+          setDeleteConfirmVisible(false);
+          return true;
+        }
+        router.back();
+        return true;
+      }
+    );
+    return () => backHandler.remove();
+  }, [infoSheetVisible, deleteConfirmVisible, router]);
+
   const currentItem = items[currentIndex];
 
-  // Auto-fetch next page near end
+  // Auto-fetch next page when nearing end of current loaded list (VIEW-7)
   useEffect(() => {
-    if (currentIndex >= items.length - 8) {
+    if (currentIndex >= items.length - 8 && items.length > 0) {
       loadNextPage(source);
     }
   }, [currentIndex, items.length, loadNextPage, source]);
@@ -147,9 +209,7 @@ export default function FullscreenViewer() {
         setDeletedIds((prev) => new Set([...prev, currentItem.id]));
         const nextIdx = Math.min(currentIndex, nextItems.length - 1);
         setCurrentIndex(nextIdx);
-        currentIndexSV.value = nextIdx;
-        scrollX.value = nextIdx * SCREEN_WIDTH;
-        startX.value = nextIdx * SCREEN_WIDTH;
+        flatListRef.current?.scrollToIndex({ index: nextIdx, animated: false });
       }
     } catch {
       Alert.alert("Error", "Couldn't delete item. Try again.");
@@ -158,295 +218,99 @@ export default function FullscreenViewer() {
     }
   };
 
-  // Reanimated Virtual Track & Carousel Shared Values
-  const currentIndexSV = useSharedValue(initialIndex);
-  const itemsCountSV = useSharedValue(items.length);
-  const scrollX = useSharedValue(initialIndex * SCREEN_WIDTH);
-  const startX = useSharedValue(initialIndex * SCREEN_WIDTH);
-  const translateY = useSharedValue(0);
-  // Direction lock: 0 = uncommitted, 1 = horizontal swipe, 2 = vertical dismiss, 3 = zoom pan
-  const dragDirection = useSharedValue(0);
-
-  // Keep shared values aligned with React state
-  useEffect(() => {
-    currentIndexSV.value = currentIndex;
-  }, [currentIndex, currentIndexSV]);
-
-  useEffect(() => {
-    itemsCountSV.value = items.length;
-  }, [items.length, itemsCountSV]);
-
-  useEffect(() => {
-    scrollX.value = currentIndex * SCREEN_WIDTH;
-    startX.value = currentIndex * SCREEN_WIDTH;
-  }, [SCREEN_WIDTH, currentIndex, scrollX, startX]);
-
-  // Zoom shared values for current active image
-  const scale = useSharedValue(1);
-  const savedScale = useSharedValue(1);
-  const zoomTranslateX = useSharedValue(0);
-  const zoomTranslateY = useSharedValue(0);
-  const savedZoomX = useSharedValue(0);
-  const savedZoomY = useSharedValue(0);
-
-  const resetZoom = useCallback(() => {
-    scale.value = 1;
-    savedScale.value = 1;
-    zoomTranslateX.value = 0;
-    zoomTranslateY.value = 0;
-    savedZoomX.value = 0;
-    savedZoomY.value = 0;
-    setIsZoomed(false);
-  }, [
-    scale,
-    savedScale,
-    zoomTranslateX,
-    zoomTranslateY,
-    savedZoomX,
-    savedZoomY,
-  ]);
-
-  const handleIndexChange = useCallback(
-    (newIdx: number) => {
-      if (newIdx !== currentIndex) {
+  const handleMomentumScrollEnd = useCallback(
+    (e: any) => {
+      const offsetX = e.nativeEvent.contentOffset.x;
+      const newIdx = Math.round(offsetX / SCREEN_WIDTH);
+      if (newIdx >= 0 && newIdx < items.length && newIdx !== currentIndex) {
         setCurrentIndex(newIdx);
-        resetZoom();
+        setIsZoomed(false);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
     },
-    [currentIndex, resetZoom]
+    [SCREEN_WIDTH, items.length, currentIndex]
   );
 
-  // Pre-calculate visible window of slides (-2 to +2 around currentIndex)
-  // Each slide is absolutely positioned at idx * SCREEN_WIDTH with its own stable React key.
-  // This guarantees 0ms flicker or visual jump when advancing slides!
-  const visibleIndices = useMemo(() => {
-    const indices: number[] = [];
-    for (let offset = -2; offset <= 2; offset++) {
-      const idx = currentIndex + offset;
-      if (idx >= 0 && idx < items.length) {
-        indices.push(idx);
-      }
-    }
-    return indices;
-  }, [currentIndex, items.length]);
+  const getItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: SCREEN_WIDTH,
+      offset: SCREEN_WIDTH * index,
+      index,
+    }),
+    [SCREEN_WIDTH]
+  );
 
-  // Gestures
+  const renderItem = useCallback(
+    ({ item, index }: { item: MediaItem; index: number }) => {
+      const isActive = index === currentIndex;
 
-  // 1. Single Tap: Toggle HUD
-  const singleTap = Gesture.Tap().onEnd(() => {
-    "worklet";
-    runOnJS(toggleBars)();
-  });
-
-  // 2. Double Tap: Zoom 1x <-> 2.5x
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd(() => {
-      "worklet";
-      if (scale.value > 1.1) {
-        scale.value = withTiming(1);
-        savedScale.value = 1;
-        zoomTranslateX.value = withTiming(0);
-        zoomTranslateY.value = withTiming(0);
-        savedZoomX.value = 0;
-        savedZoomY.value = 0;
-        runOnJS(setIsZoomed)(false);
-      } else {
-        scale.value = withTiming(2.5);
-        savedScale.value = 2.5;
-        runOnJS(setIsZoomed)(true);
-      }
-    });
-
-  // 3. Pinch to Zoom
-  const pinch = Gesture.Pinch()
-    .onUpdate((e) => {
-      "worklet";
-      scale.value = Math.max(1, Math.min(savedScale.value * e.scale, 5));
-      if (scale.value > 1.05 && !isZoomed) {
-        runOnJS(setIsZoomed)(true);
-      }
-    })
-    .onEnd(() => {
-      "worklet";
-      savedScale.value = scale.value;
-      if (scale.value < 1.05) {
-        scale.value = withTiming(1);
-        savedScale.value = 1;
-        zoomTranslateX.value = withTiming(0);
-        zoomTranslateY.value = withTiming(0);
-        savedZoomX.value = 0;
-        savedZoomY.value = 0;
-        runOnJS(setIsZoomed)(false);
-      }
-    });
-
-  // 4. Unified Direction-Locked Pan Gesture
-  const panGesture = Gesture.Pan()
-    .onStart(() => {
-      "worklet";
-      dragDirection.value = 0;
-      startX.value = scrollX.value;
-    })
-    .onUpdate((e) => {
-      "worklet";
-      if (scale.value > 1.05) {
-        // Zoomed in: pan inside photo
-        zoomTranslateX.value = savedZoomX.value + e.translationX;
-        zoomTranslateY.value = savedZoomY.value + e.translationY;
-        return;
-      }
-
-      // If direction is not locked yet, check which axis dominates
-      if (dragDirection.value === 0) {
-        const absX = Math.abs(e.translationX);
-        const absY = Math.abs(e.translationY);
-        if (absX > 6 && absX >= absY) {
-          dragDirection.value = 1; // Locked to horizontal carousel swipe
-        } else if (e.translationY > 8 && e.translationY > absX) {
-          dragDirection.value = 2; // Locked to vertical swipe down dismiss
-        }
-      }
-
-      if (dragDirection.value === 1) {
-        // Horizontal carousel drag with boundary elastic resistance
-        const targetScroll = startX.value - e.translationX;
-        const minScroll = 0;
-        const maxScroll = Math.max(0, (itemsCountSV.value - 1) * SCREEN_WIDTH);
-
-        if (targetScroll < minScroll) {
-          scrollX.value = minScroll + (targetScroll - minScroll) * 0.25;
-        } else if (targetScroll > maxScroll) {
-          scrollX.value = maxScroll + (targetScroll - maxScroll) * 0.25;
-        } else {
-          scrollX.value = targetScroll;
-        }
-      } else if (dragDirection.value === 2) {
-        // Vertical swipe down dismiss
-        translateY.value = Math.max(0, e.translationY);
-      }
-    })
-    .onEnd((e) => {
-      "worklet";
-      if (scale.value > 1.05) {
-        savedZoomX.value = zoomTranslateX.value;
-        savedZoomY.value = zoomTranslateY.value;
-        return;
-      }
-
-      if (dragDirection.value === 2) {
-        // Vertical dismiss release
-        if (translateY.value > 110 || e.velocityY > 500) {
-          runOnJS(router.back)();
-        } else {
-          translateY.value = withTiming(0, { duration: 160 });
-        }
-      } else if (dragDirection.value === 1 || Math.abs(e.translationX) > 10) {
-        // Horizontal swipe release
-        const deltaX = scrollX.value - startX.value; // positive if dragged left (advancing to next)
-        const velocityX = -e.velocityX; // positive if swiped towards next
-
-        const swipeDistanceThreshold = SCREEN_WIDTH * 0.18;
-        const swipeVelocityThreshold = 300;
-
-        let targetIndex = currentIndexSV.value;
-
-        if (
-          (deltaX > swipeDistanceThreshold || velocityX > swipeVelocityThreshold) &&
-          currentIndexSV.value < itemsCountSV.value - 1
-        ) {
-          targetIndex = currentIndexSV.value + 1;
-        } else if (
-          (deltaX < -swipeDistanceThreshold || velocityX < -swipeVelocityThreshold) &&
-          currentIndexSV.value > 0
-        ) {
-          targetIndex = currentIndexSV.value - 1;
-        }
-
-        currentIndexSV.value = targetIndex;
-        const targetScroll = targetIndex * SCREEN_WIDTH;
-        scrollX.value = withTiming(
-          targetScroll,
-          { duration: 180 },
-          (finished) => {
-            if (finished) {
-              runOnJS(handleIndexChange)(targetIndex);
-            }
-          }
+      if (item.mediaType === "video") {
+        return (
+          <VideoSlide
+            item={item}
+            isActive={isActive}
+            screenWidth={SCREEN_WIDTH}
+            screenHeight={SCREEN_HEIGHT}
+          />
         );
-      } else {
-        // Snap back to current
-        const targetScroll = currentIndexSV.value * SCREEN_WIDTH;
-        scrollX.value = withSpring(targetScroll, { damping: 25, stiffness: 320 });
-        translateY.value = withTiming(0, { duration: 160 });
       }
 
-      dragDirection.value = 0;
-    });
-
-  const composedGestures = Gesture.Simultaneous(
-    Gesture.Exclusive(doubleTap, singleTap),
-    pinch,
-    panGesture,
+      return (
+        <PhotoSlide
+          item={item}
+          isActive={isActive}
+          screenWidth={SCREEN_WIDTH}
+          screenHeight={SCREEN_HEIGHT}
+          onToggleBars={toggleBars}
+          onZoomChange={setIsZoomed}
+        />
+      );
+    },
+    [currentIndex, SCREEN_WIDTH, SCREEN_HEIGHT, toggleBars]
   );
 
-  const animatedSliderStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: -scrollX.value },
-      { translateY: translateY.value },
-    ],
-  }));
-
-  const currentImageAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: zoomTranslateX.value },
-      { translateY: zoomTranslateY.value },
-      { scale: scale.value },
-    ],
-  }));
-
-  if (!currentItem) {
+  if (items.length === 0) {
     return <View style={styles.container} />;
   }
 
   return (
     <View style={styles.container}>
-      {/* Interactive Virtual Track */}
-      <GestureDetector gesture={composedGestures}>
-        <Animated.View style={[styles.sliderContainer, animatedSliderStyle]}>
-          {visibleIndices.map((idx) => {
-            const item = items[idx];
-            if (!item) return null;
-            const isCurrent = idx === currentIndex;
-
-            return (
-              <Animated.View
-                key={item.id}
-                style={[
-                  styles.slideSlot,
-                  { width: SCREEN_WIDTH, left: idx * SCREEN_WIDTH },
-                  isCurrent ? currentImageAnimatedStyle : undefined,
-                ]}
-              >
-                {item.mediaType === "video" ? (
-                  <VideoSlide item={item} isActive={isCurrent} />
-                ) : (
-                  <Image
-                    source={{ uri: item.uri }}
-                    style={styles.fullImage}
-                    contentFit="contain"
-                    cachePolicy="memory-disk"
-                    priority={isCurrent ? "high" : "normal"}
-                    recyclingKey={item.id}
-                    transition={0}
-                  />
-                )}
-              </Animated.View>
-            );
-          })}
-        </Animated.View>
-      </GestureDetector>
+      {/* Native Horizontal Pager (FIX-3: FlatList with pagingEnabled) */}
+      <FlatList
+        ref={flatListRef}
+        data={items}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        initialScrollIndex={
+          computedInitialIndex > 0 && computedInitialIndex < items.length
+            ? computedInitialIndex
+            : undefined
+        }
+        getItemLayout={getItemLayout}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        windowSize={3}
+        maxToRenderPerBatch={1}
+        initialNumToRender={1}
+        removeClippedSubviews={Platform.OS === "android"}
+        scrollEnabled={!isZoomed}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
+        onEndReached={() => {
+          if (currentIndex >= items.length - 8) {
+            loadNextPage(source);
+          }
+        }}
+        onEndReachedThreshold={0.5}
+        onScrollToIndexFailed={(info) => {
+          setTimeout(() => {
+            flatListRef.current?.scrollToIndex({
+              index: info.index,
+              animated: false,
+            });
+          }, 30);
+        }}
+      />
 
       {/* Floating Top Bar */}
       {showBars && (
@@ -598,40 +462,268 @@ export default function FullscreenViewer() {
 }
 
 /**
- * VideoSlide
- * Renders static poster frame with Play button overlay.
- * Only mounts ActiveVideoPlayer when explicitly tapped by user.
- * Automatically halts playback when user swipes to a different slide.
- * ZERO native video player overhead while swiping or viewing!
+ * PhotoSlide (FIX-3, FIX-4)
+ * Features:
+ * - Instant cached thumbnail via placeholder (FIX-4)
+ * - Worklet-driven pinch-to-zoom (1x-5x) and double-tap zoom (1x <-> 2.5x)
+ * - Vertical swipe-down to dismiss at 1x
+ * - Soft-boundary pan clamping when zoomed
+ * - Resets zoom automatically when leaving screen
+ */
+const PhotoSlide = memo(function PhotoSlide({
+  item,
+  isActive,
+  screenWidth,
+  screenHeight,
+  onToggleBars,
+  onZoomChange,
+}: {
+  item: MediaItem;
+  isActive: boolean;
+  screenWidth: number;
+  screenHeight: number;
+  onToggleBars: () => void;
+  onZoomChange: (zoomed: boolean) => void;
+}) {
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [prevIsActive, setPrevIsActive] = useState(isActive);
+
+  if (prevIsActive !== isActive) {
+    setPrevIsActive(isActive);
+    if (!isActive) {
+      setIsZoomed(false);
+    }
+  }
+
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedX = useSharedValue(0);
+  const savedY = useSharedValue(0);
+
+  const handleZoomChange = useCallback(
+    (zoomed: boolean) => {
+      setIsZoomed(zoomed);
+      onZoomChange(zoomed);
+    },
+    [onZoomChange]
+  );
+
+  // Reset zoom whenever slide leaves active position
+  useEffect(() => {
+    if (!isActive) {
+      scale.value = 1;
+      savedScale.value = 1;
+      translateX.value = 0;
+      translateY.value = 0;
+      savedX.value = 0;
+      savedY.value = 0;
+      onZoomChange(false);
+    }
+  }, [
+    isActive,
+    onZoomChange,
+    scale,
+    savedScale,
+    translateX,
+    translateY,
+    savedX,
+    savedY,
+  ]);
+
+  const singleTap = Gesture.Tap().onEnd(() => {
+    "worklet";
+    runOnJS(onToggleBars)();
+  });
+
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      "worklet";
+      if (scale.value > 1.05) {
+        scale.value = withTiming(1);
+        savedScale.value = 1;
+        translateX.value = withTiming(0);
+        translateY.value = withTiming(0);
+        savedX.value = 0;
+        savedY.value = 0;
+        runOnJS(handleZoomChange)(false);
+      } else {
+        scale.value = withTiming(2.5);
+        savedScale.value = 2.5;
+        runOnJS(handleZoomChange)(true);
+      }
+    });
+
+  const pinch = Gesture.Pinch()
+    .onUpdate((e) => {
+      "worklet";
+      const nextScale = Math.max(1, Math.min(savedScale.value * e.scale, 5));
+      scale.value = nextScale;
+      if (nextScale > 1.05) {
+        runOnJS(handleZoomChange)(true);
+      }
+    })
+    .onEnd(() => {
+      "worklet";
+      savedScale.value = scale.value;
+      if (scale.value < 1.05) {
+        scale.value = withTiming(1);
+        savedScale.value = 1;
+        translateX.value = withTiming(0);
+        translateY.value = withTiming(0);
+        savedX.value = 0;
+        savedY.value = 0;
+        runOnJS(handleZoomChange)(false);
+      }
+    });
+
+  // Pan within zoomed image - only enabled when zoomed
+  const zoomPan = Gesture.Pan()
+    .enabled(isZoomed)
+    .onUpdate((e) => {
+      "worklet";
+      const maxDragX = ((scale.value - 1) * screenWidth) / 2;
+      const maxDragY = ((scale.value - 1) * screenHeight) / 2;
+      translateX.value = Math.max(
+        -maxDragX,
+        Math.min(maxDragX, savedX.value + e.translationX)
+      );
+      translateY.value = Math.max(
+        -maxDragY,
+        Math.min(maxDragY, savedY.value + e.translationY)
+      );
+    })
+    .onEnd(() => {
+      "worklet";
+      savedX.value = translateX.value;
+      savedY.value = translateY.value;
+    });
+
+  const tapGestures = useMemo(() => Gesture.Exclusive(doubleTap, singleTap), [doubleTap, singleTap]);
+  const composedGestures = useMemo(() => {
+    if (isZoomed) {
+      return Gesture.Simultaneous(tapGestures, pinch, zoomPan);
+    }
+    return Gesture.Simultaneous(tapGestures, pinch);
+  }, [isZoomed, tapGestures, pinch, zoomPan]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  if (!isActive) {
+    return (
+      <View
+        style={[
+          styles.slideContainer,
+          { width: screenWidth, height: screenHeight },
+        ]}
+      >
+        <Image
+          source={{ uri: item.uri }}
+          placeholder={{ uri: item.uri }}
+          style={{ width: screenWidth, height: screenHeight }}
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          priority="low"
+          recyclingKey={item.id}
+          transition={0}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <GestureDetector gesture={composedGestures}>
+      <Animated.View
+        style={[
+          styles.slideContainer,
+          { width: screenWidth, height: screenHeight },
+          animatedStyle,
+        ]}
+      >
+        <Image
+          source={{ uri: item.uri }}
+          placeholder={{ uri: item.uri }}
+          style={{ width: screenWidth, height: screenHeight }}
+          contentFit="contain"
+          cachePolicy="memory-disk"
+          priority="high"
+          recyclingKey={item.id}
+          transition={100}
+        />
+      </Animated.View>
+    </GestureDetector>
+  );
+});
+
+/**
+ * VideoSlide (FIX-5)
+ * - Only mounts VideoPlayer when explicitly requested
+ * - Automatically halts playback and resets userRequestedPlay on swipe-away
+ * - Shows helpful error state if video fails to play
  */
 function VideoSlide({
   item,
   isActive,
+  screenWidth,
+  screenHeight,
 }: {
   item: MediaItem;
   isActive: boolean;
+  screenWidth: number;
+  screenHeight: number;
 }) {
+  const [prevIsActive, setPrevIsActive] = useState(isActive);
   const [userRequestedPlay, setUserRequestedPlay] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
-  // Active player mounts only when the slide is active AND playback was requested
-  const isPlaying = isActive && userRequestedPlay;
+  // FIX-5: Reset playback state when slide becomes inactive
+  if (prevIsActive !== isActive) {
+    setPrevIsActive(isActive);
+    if (!isActive) {
+      setUserRequestedPlay(false);
+      setHasError(false);
+    }
+  }
+
+  const isPlaying = isActive && userRequestedPlay && !hasError;
 
   if (isPlaying) {
-    return <ActiveVideoPlayer uri={item.uri} />;
+    return (
+      <ActiveVideoPlayer
+        uri={item.uri}
+        screenWidth={screenWidth}
+        screenHeight={screenHeight}
+        onError={() => setHasError(true)}
+      />
+    );
   }
 
   return (
     <PressableScale
       haptic
       scaleTo={0.98}
-      style={styles.videoPosterContainer}
+      style={[
+        styles.videoPosterContainer,
+        { width: screenWidth, height: screenHeight },
+      ]}
       onPress={() => setUserRequestedPlay(true)}
     >
       <Image
         source={{ uri: item.uri }}
-        style={styles.fullImage}
+        placeholder={{ uri: item.uri }}
+        style={{ width: screenWidth, height: screenHeight }}
         contentFit="contain"
         cachePolicy="memory-disk"
+        priority={isActive ? "high" : "low"}
+        recyclingKey={item.id}
         transition={0}
       />
       <View style={styles.playButtonOverlay}>
@@ -643,23 +735,41 @@ function VideoSlide({
             strokeWidth={2.4}
           />
         </View>
+        {hasError && (
+          <Text style={styles.videoErrorText}>{"Can't play this video"}</Text>
+        )}
       </View>
     </PressableScale>
   );
 }
 
 /**
- * ActiveVideoPlayer
- * Isolated component that mounts useVideoPlayer ONLY when playback is requested.
+ * ActiveVideoPlayer (FIX-5)
+ * Isolated component mounting useVideoPlayer strictly during active playback.
  */
-function ActiveVideoPlayer({ uri }: { uri: string }) {
+function ActiveVideoPlayer({
+  uri,
+  screenWidth,
+  screenHeight,
+  onError,
+}: {
+  uri: string;
+  screenWidth: number;
+  screenHeight: number;
+  onError: () => void;
+}) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = false;
     p.play();
   });
 
   return (
-    <View style={styles.videoContainer}>
+    <View
+      style={[
+        styles.videoContainer,
+        { width: screenWidth, height: screenHeight },
+      ]}
+    >
       <VideoView
         player={player}
         nativeControls
@@ -676,36 +786,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Palette.black,
   },
-  sliderContainer: {
-    flex: 1,
-    overflow: "visible",
-  },
-  slideSlot: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
+  slideContainer: {
     alignItems: "center",
     justifyContent: "center",
-  },
-  fullImage: {
-    width: "100%",
-    height: "100%",
+    backgroundColor: Palette.black,
   },
   videoContainer: {
-    width: "100%",
-    height: "100%",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: Palette.black,
   },
   videoPlayer: {
     width: "100%",
     height: "100%",
   },
   videoPosterContainer: {
-    width: "100%",
-    height: "100%",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: Palette.black,
   },
   playButtonOverlay: {
     ...StyleSheet.absoluteFill,
@@ -722,6 +820,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingLeft: 3,
+  },
+  videoErrorText: {
+    fontFamily: Fonts.medium,
+    fontSize: 13,
+    color: "#FFFFFF",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.md,
+    marginTop: 12,
   },
   topBar: {
     position: "absolute",

@@ -102,10 +102,14 @@ export default function CameraTab() {
   }));
 
   const handleItemPress = useCallback(
-    (item: MediaItem) => {
+    (item: MediaItem, index?: number) => {
       router.push({
         pathname: '/viewer',
-        params: { source: 'camera', assetId: item.id },
+        params: {
+          source: 'camera',
+          assetId: item.id,
+          initialIndex: index !== undefined ? String(index) : undefined,
+        },
       });
     },
     [router]

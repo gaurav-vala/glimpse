@@ -9,12 +9,6 @@ interface DateHeaderProps {
 }
 
 // Hoisted static formatters to avoid expensive re-instantiation in loops (js-hoist-intl)
-const shortDateFormatter = new Intl.DateTimeFormat(undefined, {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-});
-
 const monthYearFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'long',
   year: 'numeric',
@@ -22,7 +16,8 @@ const monthYearFormatter = new Intl.DateTimeFormat(undefined, {
 
 /**
  * Format timestamp into human header:
- * "Today", "Yesterday", "Mon, 3 Nov", or "October 2025" (GRID-6).
+ * "Today", "Yesterday", or "Month Year" (GRID-6).
+ * Groups older photos by month to ensure rows are completely filled without empty holes.
  */
 export function formatDateHeader(timestamp: number): string {
   const date = new Date(timestamp);
@@ -43,11 +38,6 @@ export function formatDateHeader(timestamp: number): string {
     date.getFullYear() === yesterday.getFullYear();
 
   if (isYesterday) return 'Yesterday';
-
-  const diffDays = Math.round((now.getTime() - date.getTime()) / (1000 * 3600 * 24));
-  if (diffDays < 30) {
-    return shortDateFormatter.format(date);
-  }
 
   return monthYearFormatter.format(date);
 }

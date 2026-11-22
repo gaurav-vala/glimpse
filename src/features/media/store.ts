@@ -69,7 +69,7 @@ export const useMediaStore = create<MediaStoreState>((set, get) => ({
         collections: {
           ...s.collections,
           [sourceKey]: {
-            items: res.items,
+            items: res.items.slice().sort((a, b) => b.creationTime - a.creationTime),
             endCursor: res.endCursor,
             hasNextPage: res.hasNextPage,
             totalCount: res.totalCount,
@@ -122,7 +122,7 @@ export const useMediaStore = create<MediaStoreState>((set, get) => ({
         collections: {
           ...s.collections,
           [sourceKey]: {
-            items: [...current.items, ...freshItems],
+            items: [...current.items, ...freshItems].sort((a, b) => b.creationTime - a.creationTime),
             endCursor: res.endCursor,
             hasNextPage: res.hasNextPage,
             totalCount: res.totalCount,
@@ -174,7 +174,7 @@ export const useMediaStore = create<MediaStoreState>((set, get) => ({
         collections: {
           ...s.collections,
           [sourceKey]: {
-            items: res.items,
+            items: res.items.slice().sort((a, b) => b.creationTime - a.creationTime),
             endCursor: res.endCursor,
             hasNextPage: res.hasNextPage,
             totalCount: res.totalCount,

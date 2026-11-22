@@ -19,6 +19,7 @@ import { generateMockMediaItems, MOCK_ALBUMS } from './mockData';
 class MediaService {
   private cameraAlbumCache: Album | null = null;
   private albumCoverCache = new Map<string, string>();
+  public albumTimestampCache = new Map<string, number>();
   private mockItems: MediaItem[] = [];
   private mockAlbums: Album[] = [];
   private changeListeners = new Set<() => void>();
@@ -131,13 +132,21 @@ class MediaService {
    * which leverages Android MediaStore's native thumbnail cache and is required by
    * ExoPlayer to bypass Scoped Storage file restrictions.
    */
-  private formatAsset(asset: MediaLibrary.Asset): MediaItem {
+  private formatAsset = (asset: MediaLibrary.Asset): MediaItem => {
     const isAndroid = Platform.OS === 'android';
     let resolvedUri = asset.uri;
     if (isAndroid && !this._demoMode && asset.id) {
       const type = asset.mediaType === 'video' ? 'video' : 'images';
       resolvedUri = `content://media/external/${type}/media/${asset.id}`;
     }
+
+    const rawCreation = asset.creationTime && asset.creationTime > 0 ? asset.creationTime : 0;
+    const rawModification = asset.modificationTime && asset.modificationTime > 0 ? asset.modificationTime : 0;
+    // Android MediaStore returns date_modified in seconds (< 1e11), while datetaken is in ms (> 1e11).
+    // Normalize both to milliseconds so comparisons are strictly accurate:
+    const normCreation = rawCreation > 0 && rawCreation < 1e11 ? rawCreation * 1000 : rawCreation;
+    const normModification = rawModification > 0 && rawModification < 1e11 ? rawModification * 1000 : rawModification;
+    const validTimestamp = Math.max(normCreation, normModification) || Date.now();
 
     return {
       id: asset.id,
@@ -147,8 +156,8 @@ class MediaService {
       width: asset.width || 0,
       height: asset.height || 0,
       duration: asset.duration || 0,
-      creationTime: asset.creationTime || asset.modificationTime || Date.now(),
-      modificationTime: asset.modificationTime || Date.now(),
+      creationTime: validTimestamp,
+      modificationTime: normModification || validTimestamp,
       filename: asset.filename || '',
       albumId: asset.albumId,
     };
@@ -239,14 +248,20 @@ class MediaService {
       first,
       after,
       mediaType: ['photo', 'video'],
-      sortBy: [['creationTime', false]],
+      sortBy: [
+        ['modificationTime', false],
+        ['creationTime', false],
+      ],
       ...(targetAlbumId ? { album: targetAlbumId } : {}),
     };
 
     const pagedInfo = await MediaLibrary.getAssetsAsync(queryOptions);
+    const formatted = pagedInfo.assets.map((a) => this.formatAsset(a));
+    // Guarantee strict newest-first sorting everywhere
+    formatted.sort((a, b) => b.creationTime - a.creationTime);
 
     return {
-      items: pagedInfo.assets.map(this.formatAsset),
+      items: formatted,
       endCursor: pagedInfo.endCursor,
       hasNextPage: pagedInfo.hasNextPage,
       totalCount: pagedInfo.totalCount,
@@ -308,7 +323,10 @@ class MediaService {
         first: 1,
         album: albumId,
         mediaType: ['photo', 'video'],
-        sortBy: [['creationTime', false]],
+        sortBy: [
+          ['modificationTime', false],
+          ['creationTime', false],
+        ],
       });
 
       if (res.assets.length > 0) {
@@ -319,7 +337,13 @@ class MediaService {
           const type = asset.mediaType === 'video' ? 'video' : 'images';
           cover = `content://media/external/${type}/media/${asset.id}`;
         }
+        const rawCreation = asset.creationTime && asset.creationTime > 0 ? asset.creationTime : 0;
+        const rawModification = asset.modificationTime && asset.modificationTime > 0 ? asset.modificationTime : 0;
+        const normCreation = rawCreation > 0 && rawCreation < 1e11 ? rawCreation * 1000 : rawCreation;
+        const normModification = rawModification > 0 && rawModification < 1e11 ? rawModification * 1000 : rawModification;
+        const time = Math.max(normCreation, normModification) || 0;
         this.albumCoverCache.set(albumId, cover);
+        this.albumTimestampCache.set(albumId, time);
         return cover;
       }
       return null;

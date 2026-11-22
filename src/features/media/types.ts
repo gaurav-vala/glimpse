@@ -19,6 +19,7 @@ export interface Album {
   title: string;
   assetCount: number;
   coverUri?: string;
+  latestTimestamp?: number;
 }
 
 export type SourceKey = 'all' | 'camera' | `album:${string}`;

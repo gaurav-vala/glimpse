@@ -24,10 +24,14 @@ export default function AlbumDetailScreen() {
   const exitSelectionMode = useSelectionStore((s) => s.exitSelectionMode);
 
   const handleItemPress = useCallback(
-    (item: MediaItem) => {
+    (item: MediaItem, index?: number) => {
       router.push({
         pathname: '/viewer',
-        params: { source: sourceKey, assetId: item.id },
+        params: {
+          source: sourceKey,
+          assetId: item.id,
+          initialIndex: index !== undefined ? String(index) : undefined,
+        },
       });
     },
     [router, sourceKey]

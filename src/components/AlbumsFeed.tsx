@@ -31,9 +31,22 @@ export function AlbumsFeed() {
       const withCovers = await Promise.all(
         list.map(async (alb) => {
           const coverUri = await mediaService.getAlbumCover(alb.id);
-          return { ...alb, coverUri: coverUri || undefined };
+          const timestamp = mediaService.albumTimestampCache.get(alb.id) || 0;
+          return { ...alb, coverUri: coverUri || undefined, latestTimestamp: timestamp };
         })
       );
+
+      // Sort: Camera first, Screenshots second, then folders with newest media first
+      withCovers.sort((a, b) => {
+        const aTitle = a.title.toLowerCase();
+        const bTitle = b.title.toLowerCase();
+        if (aTitle === 'camera' || aTitle === 'dcim') return -1;
+        if (bTitle === 'camera' || bTitle === 'dcim') return 1;
+        if (aTitle === 'screenshots') return -1;
+        if (bTitle === 'screenshots') return 1;
+        return (b.latestTimestamp || 0) - (a.latestTimestamp || 0);
+      });
+
       setAlbums(withCovers);
     } catch {
       // Ignored
@@ -45,18 +58,39 @@ export function AlbumsFeed() {
 
   useEffect(() => {
     let isMounted = true;
-    mediaService.getAlbums().then(async (list) => {
-      const withCovers = await Promise.all(
-        list.map(async (alb) => {
-          const coverUri = await mediaService.getAlbumCover(alb.id);
-          return { ...alb, coverUri: coverUri || undefined };
-        })
-      );
-      if (isMounted) {
-        setAlbums(withCovers);
-        setLoading(false);
+    (async () => {
+      try {
+        const list = await mediaService.getAlbums();
+        const withCovers = await Promise.all(
+          list.map(async (alb) => {
+            const coverUri = await mediaService.getAlbumCover(alb.id);
+            const timestamp = mediaService.albumTimestampCache.get(alb.id) || 0;
+            return { ...alb, coverUri: coverUri || undefined, latestTimestamp: timestamp };
+          })
+        );
+
+        withCovers.sort((a, b) => {
+          const aTitle = a.title.toLowerCase();
+          const bTitle = b.title.toLowerCase();
+          if (aTitle === 'camera' || aTitle === 'dcim') return -1;
+          if (bTitle === 'camera' || bTitle === 'dcim') return 1;
+          if (aTitle === 'screenshots') return -1;
+          if (bTitle === 'screenshots') return 1;
+          return (b.latestTimestamp || 0) - (a.latestTimestamp || 0);
+        });
+
+        if (isMounted) {
+          setAlbums(withCovers);
+          setLoading(false);
+          setRefreshing(false);
+        }
+      } catch {
+        if (isMounted) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
-    });
+    })();
 
     return () => {
       isMounted = false;

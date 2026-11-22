@@ -246,95 +246,74 @@ export default function FullscreenViewer() {
       }
     });
 
-  // 4. Horizontal Swipe (moves translateX between images when scale == 1)
-  const horizontalSwipe = Gesture.Pan()
-    .enabled(!isZoomed)
-    .activeOffsetX([-15, 15])
-    .failOffsetY([-25, 25])
+  // 4. Unified Pan Gesture: handles horizontal swipe, vertical dismiss, and zoom panning
+  const panGesture = Gesture.Pan()
     .onUpdate((e) => {
       'worklet';
-      if (currentIndex === 0 && e.translationX > 0) {
-        translateX.value = e.translationX * 0.3; // Edge resistance
-      } else if (currentIndex === items.length - 1 && e.translationX < 0) {
-        translateX.value = e.translationX * 0.3; // Edge resistance
-      } else {
-        translateX.value = e.translationX;
-      }
-    })
-    .onEnd((e) => {
-      'worklet';
-      const swipeDistanceThreshold = SCREEN_WIDTH * 0.18;
-      const swipeVelocityThreshold = 350;
-
-      if (
-        (e.translationX < -swipeDistanceThreshold || e.velocityX < -swipeVelocityThreshold) &&
-        currentIndex < items.length - 1
-      ) {
-        // Slide to next image
-        translateX.value = withTiming(-SCREEN_WIDTH, { duration: 180 }, (finished) => {
-          if (finished) {
-            runOnJS(goToNext)();
-            translateX.value = 0;
-          }
-        });
-      } else if (
-        (e.translationX > swipeDistanceThreshold || e.velocityX > swipeVelocityThreshold) &&
-        currentIndex > 0
-      ) {
-        // Slide to previous image
-        translateX.value = withTiming(SCREEN_WIDTH, { duration: 180 }, (finished) => {
-          if (finished) {
-            runOnJS(goToPrev)();
-            translateX.value = 0;
-          }
-        });
-      } else {
-        // Snap back to center
-        translateX.value = withSpring(0, { damping: 25, stiffness: 320 });
-      }
-    });
-
-  // 5. Swipe Down to Close
-  const swipeDownDismiss = Gesture.Pan()
-    .enabled(!isZoomed)
-    .activeOffsetY([18, 18])
-    .failOffsetX([-18, 18])
-    .onUpdate((e) => {
-      'worklet';
-      if (e.translationY > 0) {
+      if (scale.value > 1.05) {
+        // Zoomed in: pan inside zoomed photo
+        zoomTranslateX.value = savedZoomX.value + e.translationX;
+        zoomTranslateY.value = savedZoomY.value + e.translationY;
+      } else if (Math.abs(e.translationY) > Math.abs(e.translationX) && e.translationY > 0) {
+        // Dragging downwards: swipe down dismiss
         translateY.value = e.translationY;
+      } else {
+        // Dragging horizontally: swipe between images
+        if (currentIndex === 0 && e.translationX > 0) {
+          translateX.value = e.translationX * 0.25; // Edge resistance
+        } else if (currentIndex === items.length - 1 && e.translationX < 0) {
+          translateX.value = e.translationX * 0.25; // Edge resistance
+        } else {
+          translateX.value = e.translationX;
+        }
       }
     })
     .onEnd((e) => {
       'worklet';
-      if (e.translationY > 120 || e.velocityY > 600) {
+      if (scale.value > 1.05) {
+        savedZoomX.value = zoomTranslateX.value;
+        savedZoomY.value = zoomTranslateY.value;
+      } else if (translateY.value > 120 || e.velocityY > 600) {
         runOnJS(router.back)();
-      } else {
+      } else if (translateY.value > 0) {
         translateY.value = withTiming(0);
+      } else {
+        const swipeDistanceThreshold = SCREEN_WIDTH * 0.18;
+        const swipeVelocityThreshold = 350;
+
+        if (
+          (e.translationX < -swipeDistanceThreshold || e.velocityX < -swipeVelocityThreshold) &&
+          currentIndex < items.length - 1
+        ) {
+          // Slide to next image
+          translateX.value = withTiming(-SCREEN_WIDTH, { duration: 180 }, (finished) => {
+            if (finished) {
+              runOnJS(goToNext)();
+              translateX.value = 0;
+            }
+          });
+        } else if (
+          (e.translationX > swipeDistanceThreshold || e.velocityX > swipeVelocityThreshold) &&
+          currentIndex > 0
+        ) {
+          // Slide to previous image
+          translateX.value = withTiming(SCREEN_WIDTH, { duration: 180 }, (finished) => {
+            if (finished) {
+              runOnJS(goToPrev)();
+              translateX.value = 0;
+            }
+          });
+        } else {
+          // Snap back to center
+          translateX.value = withSpring(0, { damping: 25, stiffness: 320 });
+        }
       }
     });
-
-  // 6. Pan when Zoomed (2D pan inside zoomed photo)
-  const zoomPan = Gesture.Pan()
-    .enabled(isZoomed)
-    .onUpdate((e) => {
-      'worklet';
-      zoomTranslateX.value = savedZoomX.value + e.translationX;
-      zoomTranslateY.value = savedZoomY.value + e.translationY;
-    })
-    .onEnd(() => {
-      'worklet';
-      savedZoomX.value = zoomTranslateX.value;
-      savedZoomY.value = zoomTranslateY.value;
-    });
-
-  // Compose Gestures
-  const nonZoomGestures = Gesture.Race(swipeDownDismiss, horizontalSwipe);
-  const primaryGesture = isZoomed ? zoomPan : nonZoomGestures;
 
   const composedGestures = Gesture.Simultaneous(
     Gesture.Exclusive(doubleTap, singleTap),
-    Gesture.Simultaneous(pinch, primaryGesture)
+    pinch,
+    panGesture
   );
 
   const animatedSliderStyle = useAnimatedStyle(() => ({

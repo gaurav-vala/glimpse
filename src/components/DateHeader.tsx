@@ -1,9 +1,10 @@
 import React, { memo } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
-import { DarkTheme, Typography, Spacing } from '../theme/theme';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { DarkTheme, Fonts, Spacing } from '../theme/theme';
 
 interface DateHeaderProps {
   title: string;
+  onSelectAll?: () => void;
 }
 
 /**
@@ -45,25 +46,42 @@ export function formatDateHeader(timestamp: number): string {
   });
 }
 
-export const DateHeader = memo(function DateHeader({ title }: DateHeaderProps) {
+export const DateHeader = memo(function DateHeader({ title, onSelectAll }: DateHeaderProps) {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>{title}</Text>
+      <Text style={styles.title}>{title}</Text>
+      {onSelectAll && (
+        <TouchableOpacity onPress={onSelectAll} activeOpacity={0.7} style={styles.selectButton}>
+          <Text style={styles.selectText}>Select</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 });
 
 const styles = StyleSheet.create({
   container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.sm,
     backgroundColor: DarkTheme.colors.background,
   },
-  text: {
-    ...Typography.sectionHeader,
-    color: DarkTheme.colors.textSecondary,
+  title: {
+    fontFamily: Fonts.semiBold,
+    color: DarkTheme.colors.textMuted,
     fontSize: 13,
     letterSpacing: -0.1,
+  },
+  selectButton: {
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+  },
+  selectText: {
+    fontFamily: Fonts.medium,
+    color: DarkTheme.colors.accent,
+    fontSize: 12.5,
   },
 });

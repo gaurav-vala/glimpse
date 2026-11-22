@@ -24,8 +24,8 @@ function formatDuration(sec: number): string {
 
 /**
  * MediaTile
- * RULE: Memoized and consumes only primitive props to avoid re-rendering entire grid
- * when a single tile's selection changes.
+ * Modern squircle tile with rounded corners (radius 14),
+ * subtle border, and sleek frosted video badge.
  */
 export const MediaTile = memo(function MediaTile({
   id,
@@ -44,7 +44,7 @@ export const MediaTile = memo(function MediaTile({
         styles.container,
         { width: tileSize, height: tileSize },
       ]}
-      activeOpacity={0.75}
+      activeOpacity={0.8}
       onPress={() => onPress(id)}
       onLongPress={() => onLongPress(id)}
     >
@@ -60,7 +60,7 @@ export const MediaTile = memo(function MediaTile({
       {/* Video duration badge & play glyph (GRID-4) */}
       {mediaType === 'video' && (
         <View style={styles.videoBadge}>
-          <AppIcon icon={PlayIcon} size={10} color="#FFFFFF" strokeWidth={2.2} />
+          <AppIcon icon={PlayIcon} size={9} color="#FFFFFF" strokeWidth={2.4} />
           <Text style={styles.videoDurationText}>{formatDuration(duration)}</Text>
         </View>
       )}
@@ -70,7 +70,7 @@ export const MediaTile = memo(function MediaTile({
         <View style={[styles.selectionOverlay, isSelected && styles.selectedOverlay]}>
           <View style={[styles.checkCircle, isSelected && styles.checkCircleSelected]}>
             {isSelected && (
-              <AppIcon icon={Tick02Icon} size={12} color="#FFFFFF" strokeWidth={2.8} />
+              <AppIcon icon={Tick02Icon} size={11} color="#FFFFFF" strokeWidth={3} />
             )}
           </View>
         </View>
@@ -81,8 +81,11 @@ export const MediaTile = memo(function MediaTile({
 
 const styles = StyleSheet.create({
   container: {
+    borderRadius: Radius.md, // 14dp squircle
     backgroundColor: DarkTheme.colors.tilePlaceholder,
     overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   image: {
     width: '100%',
@@ -90,20 +93,22 @@ const styles = StyleSheet.create({
   },
   videoBadge: {
     position: 'absolute',
-    bottom: 4,
-    right: 4,
-    backgroundColor: 'rgba(0, 0, 0, 0.72)',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: Radius.xs,
+    bottom: 5,
+    right: 5,
+    backgroundColor: 'rgba(0, 0, 0, 0.76)',
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: Radius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   videoDurationText: {
     ...Typography.badge,
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 9.5,
   },
   selectionOverlay: {
     ...StyleSheet.absoluteFill,
@@ -113,15 +118,15 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   selectedOverlay: {
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    backgroundColor: 'rgba(0, 0, 0, 0.40)',
   },
   checkCircle: {
     width: 22,
     height: 22,
     borderRadius: Radius.round,
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderColor: 'rgba(255, 255, 255, 0.85)',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
     alignItems: 'center',
     justifyContent: 'center',
   },

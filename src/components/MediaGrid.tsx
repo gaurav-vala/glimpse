@@ -12,16 +12,18 @@ import { MediaItem } from '../features/media/types';
 import { MediaTile } from './MediaTile';
 import { DateHeader, formatDateHeader } from './DateHeader';
 import { AppIcon, Image01Icon } from './ui/Icon';
-import { DarkTheme, Typography, Spacing } from '../theme/theme';
+import { DarkTheme, Spacing } from '../theme/theme';
 import { useSelectionStore } from '../features/selection/store';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const NUM_COLUMNS = 3;
-const COLUMN_GAP = 2;
-const TILE_SIZE = (SCREEN_WIDTH - COLUMN_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
+const HORIZONTAL_PADDING = Spacing.md; // 12dp outer margin
+const COLUMN_GAP = 6; // 6dp spacing between floating cards
+const AVAILABLE_WIDTH = SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - COLUMN_GAP * (NUM_COLUMNS - 1);
+const TILE_SIZE = AVAILABLE_WIDTH / NUM_COLUMNS;
 
 type GridItem =
-  | { type: 'header'; id: string; title: string }
+  | { type: 'header'; id: string; title: string; dayItemIds: string[] }
   | { type: 'tile'; id: string; item: MediaItem };
 
 interface MediaGridProps {
@@ -45,27 +47,42 @@ export function MediaGrid({
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const toggleItem = useSelectionStore((s) => s.toggleItem);
   const enterSelectionMode = useSelectionStore((s) => s.enterSelectionMode);
+  const selectAll = useSelectionStore((s) => s.selectAll);
 
   // Group items by day for date headers (GRID-6)
   const gridData = useMemo<GridItem[]>(() => {
     const list: GridItem[] = [];
     let currentHeader = '';
+    let currentDayIds: string[] = [];
+    let currentHeaderIndex = -1;
 
     for (const item of items) {
       const headerTitle = formatDateHeader(item.creationTime);
       if (headerTitle !== currentHeader) {
+        if (currentHeaderIndex >= 0) {
+          (list[currentHeaderIndex] as any).dayItemIds = currentDayIds;
+        }
         currentHeader = headerTitle;
+        currentDayIds = [item.id];
+        currentHeaderIndex = list.length;
         list.push({
           type: 'header',
           id: `header-${currentHeader}-${item.id}`,
           title: currentHeader,
+          dayItemIds: [],
         });
+      } else {
+        currentDayIds.push(item.id);
       }
       list.push({
         type: 'tile',
         id: item.id,
         item,
       });
+    }
+
+    if (currentHeaderIndex >= 0) {
+      (list[currentHeaderIndex] as any).dayItemIds = currentDayIds;
     }
 
     return list;
@@ -94,10 +111,22 @@ export function MediaGrid({
     [isSelectionMode, enterSelectionMode, toggleItem]
   );
 
+  const handleSelectDay = useCallback(
+    (ids: string[]) => {
+      selectAll([...Array.from(selectedIds), ...ids]);
+    },
+    [selectAll, selectedIds]
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: GridItem }) => {
       if (item.type === 'header') {
-        return <DateHeader title={item.title} />;
+        return (
+          <DateHeader
+            title={item.title}
+            onSelectAll={isSelectionMode ? () => handleSelectDay(item.dayItemIds) : undefined}
+          />
+        );
       }
 
       const media = item.item;
@@ -119,7 +148,7 @@ export function MediaGrid({
         </View>
       );
     },
-    [selectedIds, isSelectionMode, handleTilePress, handleTileLongPress]
+    [selectedIds, isSelectionMode, handleTilePress, handleTileLongPress, handleSelectDay]
   );
 
   const getItemType = useCallback((item: GridItem) => {
@@ -139,7 +168,7 @@ export function MediaGrid({
     }
     return (
       <View style={styles.emptyContainer}>
-        <AppIcon icon={Image01Icon} size={48} color={DarkTheme.colors.textSecondary} />
+        <AppIcon icon={Image01Icon} size={48} color={DarkTheme.colors.textMuted} />
         <Text style={styles.emptyTitle}>No photos or videos yet</Text>
         <Text style={styles.emptySubtitle}>Media taken with your phone will show up here.</Text>
       </View>
@@ -188,7 +217,8 @@ export function MediaGrid({
 
 const styles = StyleSheet.create({
   listContent: {
-    paddingBottom: 80,
+    paddingHorizontal: HORIZONTAL_PADDING - COLUMN_GAP / 2,
+    paddingBottom: 110, // Generous padding for floating pill tab bar
   },
   tileWrapper: {
     padding: COLUMN_GAP / 2,
@@ -206,14 +236,14 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   emptyTitle: {
-    ...Typography.sectionHeader,
     color: DarkTheme.colors.text,
     fontSize: 16,
+    fontWeight: '600',
     marginTop: Spacing.sm,
   },
   emptySubtitle: {
-    ...Typography.caption,
-    color: DarkTheme.colors.textSecondary,
+    color: DarkTheme.colors.textMuted,
+    fontSize: 13,
     textAlign: 'center',
   },
   footerLoader: {

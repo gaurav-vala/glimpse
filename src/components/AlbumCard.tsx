@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { Album } from '../features/media/types';
-import { DarkTheme, Typography, Spacing } from '../theme/theme';
+import { DarkTheme, Fonts, Spacing, Radius } from '../theme/theme';
 
 interface AlbumCardProps {
   album: Album;
@@ -12,7 +12,7 @@ interface AlbumCardProps {
 
 /**
  * AlbumCard (ALB-1, ALB-2)
- * 2-column grid of rounded cover tiles (radius 12),
+ * 2-column grid of rounded squircle cover cards (radius 18),
  * with album title and item count.
  */
 export const AlbumCard = memo(function AlbumCard({
@@ -53,10 +53,12 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   coverWrapper: {
-    borderRadius: 12,
+    borderRadius: Radius.lg, // 18dp rounded squircle
     overflow: 'hidden',
     backgroundColor: DarkTheme.colors.tilePlaceholder,
     marginBottom: Spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   coverImage: {
     width: '100%',
@@ -68,15 +70,14 @@ const styles = StyleSheet.create({
     backgroundColor: DarkTheme.colors.tilePlaceholder,
   },
   title: {
-    ...Typography.label,
+    fontFamily: Fonts.semiBold,
     color: DarkTheme.colors.text,
     fontSize: 14,
-    fontWeight: '600',
     marginTop: 2,
   },
   count: {
-    ...Typography.caption,
-    color: DarkTheme.colors.textSecondary,
+    fontFamily: Fonts.medium,
+    color: DarkTheme.colors.textMuted,
     fontSize: 12,
     marginTop: 1,
   },

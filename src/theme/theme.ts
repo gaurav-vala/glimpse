@@ -1,23 +1,45 @@
 export const Palette = {
-  // Pure Pitch Dark / OLED
-  black: '#000000',
-  charcoal: '#0c0d11',
-  surfaceDark: '#12141a',
-  surfaceElevatedDark: '#181b24',
-  borderDark: 'rgba(255, 255, 255, 0.08)',
-  borderStrongDark: 'rgba(255, 255, 255, 0.16)',
+  // Pure Pitch Dark / OLED (From Reference AAA Pass Dark Ramp)
+  black: '#000000', // Base
+  dark50: '#0A0A0A',
+  dark100: '#171717',
+  dark200: '#262626',
+  dark300: '#373737',
+  dark400: '#525252',
+  dark500: '#8A8A8A',
+  dark600: '#A3A3A3',
+  dark700: '#D4D4D4',
+  dark800: '#E5E5E5',
+  dark900: '#F5F5F5',
+  dark950: '#FAFAFA',
 
-  // Pure Clean Light
+  // Surfaces & Borders
+  surfaceDark: '#0A0A0A',
+  surfaceCard: '#141416',
+  surfaceElevated: '#1C1C20',
+  surfacePill: 'rgba(23, 23, 26, 0.90)',
+  borderDark: 'rgba(255, 255, 255, 0.08)',
+  borderStrongDark: 'rgba(255, 255, 255, 0.14)',
+  pillBorder: 'rgba(255, 255, 255, 0.12)',
+
+  // Pure Clean Light (From Reference AAA Pass Light Ramp)
   white: '#FFFFFF',
-  surfaceLight: '#F5F5F7',
-  surfaceElevatedLight: '#FFFFFF',
-  borderLight: 'rgba(0, 0, 0, 0.08)',
-  borderStrongLight: 'rgba(0, 0, 0, 0.16)',
+  light50: '#FAFAFA',
+  light100: '#F5F5F5',
+  light200: '#E5E5E5',
+  light300: '#D4D4D4',
+  light400: '#A3A3A3',
+  light500: '#737373',
+  light600: '#525252',
+  light700: '#404040',
+  light800: '#262626',
+  light900: '#171717',
+  light950: '#0A0A0A',
 
   // Accents
   accentBlue: '#2563EB',
-  accentBlueSoft: 'rgba(37, 99, 235, 0.12)',
-  accentBlueGlow: 'rgba(37, 99, 235, 0.25)',
+  accentBlueSoft: 'rgba(37, 99, 235, 0.16)',
+  accentGlow: 'rgba(37, 99, 235, 0.28)',
 
   destructive: '#EF4444',
   destructiveSoft: 'rgba(239, 68, 68, 0.14)',
@@ -29,11 +51,15 @@ export const Palette = {
 export interface ThemeColors {
   background: string;
   surface: string;
+  surfaceCard: string;
   surfaceElevated: string;
+  surfacePill: string;
   border: string;
   borderStrong: string;
+  pillBorder: string;
   text: string;
   textSecondary: string;
+  textMuted: string;
   textDim: string;
   textInverse: string;
   tilePlaceholder: string;
@@ -49,20 +75,24 @@ export const LightTheme = {
   dark: false,
   colors: {
     background: Palette.white,
-    surface: Palette.surfaceLight,
-    surfaceElevated: Palette.surfaceElevatedLight,
-    border: Palette.borderLight,
-    borderStrong: Palette.borderStrongLight,
-    text: '#111827',
-    textSecondary: '#6B7280',
-    textDim: '#9CA3AF',
-    textInverse: '#FFFFFF',
-    tilePlaceholder: '#E5E7EB',
+    surface: Palette.light100,
+    surfaceCard: Palette.white,
+    surfaceElevated: Palette.light50,
+    surfacePill: 'rgba(255, 255, 255, 0.92)',
+    border: Palette.light200,
+    borderStrong: Palette.light300,
+    pillBorder: 'rgba(0, 0, 0, 0.08)',
+    text: Palette.light950,
+    textSecondary: Palette.light700,
+    textMuted: Palette.light500,
+    textDim: Palette.light400,
+    textInverse: Palette.white,
+    tilePlaceholder: Palette.light200,
     accent: Palette.accentBlue,
     accentSoft: Palette.accentBlueSoft,
     destructive: Palette.destructive,
     destructiveSoft: Palette.destructiveSoft,
-    card: Palette.surfaceLight,
+    card: Palette.white,
     overlay: 'rgba(0, 0, 0, 0.45)',
   } as ThemeColors,
 } as const;
@@ -70,31 +100,36 @@ export const LightTheme = {
 export const DarkTheme = {
   dark: true,
   colors: {
-    background: Palette.black,
+    background: Palette.black, // Pure pitch black OLED
     surface: Palette.surfaceDark,
-    surfaceElevated: Palette.surfaceElevatedDark,
+    surfaceCard: Palette.surfaceCard,
+    surfaceElevated: Palette.surfaceElevated,
+    surfacePill: Palette.surfacePill,
     border: Palette.borderDark,
     borderStrong: Palette.borderStrongDark,
-    text: '#F3F4F6',
-    textSecondary: '#9AA0B4',
-    textDim: '#6B7280',
-    textInverse: '#000000',
-    tilePlaceholder: '#14161F',
-    accent: '#3B82F6',
-    accentSoft: 'rgba(59, 130, 246, 0.15)',
+    pillBorder: Palette.pillBorder,
+    text: Palette.dark950, // #FAFAFA
+    textSecondary: Palette.dark700, // #D4D4D4
+    textMuted: Palette.dark500, // #8A8A8A
+    textDim: Palette.dark400, // #525252
+    textInverse: Palette.black,
+    tilePlaceholder: '#121214',
+    accent: '#3B82F6', // Electric Vibrant Blue
+    accentSoft: 'rgba(59, 130, 246, 0.16)',
     destructive: Palette.destructive,
     destructiveSoft: Palette.destructiveSoft,
-    card: Palette.surfaceDark,
-    overlay: 'rgba(0, 0, 0, 0.7)',
+    card: Palette.surfaceCard,
+    overlay: 'rgba(0, 0, 0, 0.72)',
   } as ThemeColors,
 } as const;
 
 export const Radius = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
+  xs: 6,
+  sm: 10,
+  md: 14,
+  lg: 18,
+  xl: 22,
+  pill: 999,
   round: 999,
 } as const;
 

@@ -1,50 +1,61 @@
 import React, { memo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import { Image } from 'expo-image';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Album } from '../features/media/types';
 import { DarkTheme, Fonts, Spacing, Radius } from '../theme/theme';
+import { PressableScale } from './ui/pressable-scale';
 
 interface AlbumCardProps {
   album: Album;
   cardWidth: number;
+  index?: number;
   onPress: (album: Album) => void;
 }
 
 /**
  * AlbumCard (ALB-1, ALB-2)
  * 2-column grid of rounded squircle cover cards (radius 18),
- * with album title and item count.
+ * with album title and item count, press scale animation, and entrance animation.
  */
 export const AlbumCard = memo(function AlbumCard({
   album,
   cardWidth,
+  index = 0,
   onPress,
 }: AlbumCardProps) {
   return (
-    <TouchableOpacity
+    <Animated.View
+      entering={FadeInDown.delay(Math.min(index * 35, 300)).duration(240).springify()}
       style={[styles.container, { width: cardWidth }]}
-      activeOpacity={0.8}
-      onPress={() => onPress(album)}
     >
-      <View style={[styles.coverWrapper, { width: cardWidth, height: cardWidth }]}>
-        {album.coverUri ? (
-          <Image
-            source={{ uri: album.coverUri }}
-            style={styles.coverImage}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            transition={0}
-          />
-        ) : (
-          <View style={styles.placeholderCover} />
-        )}
-      </View>
+      <PressableScale
+        haptic
+        scaleTo={0.96}
+        onPress={() => onPress(album)}
+        accessibilityRole="button"
+        accessibilityLabel={`Album ${album.title}`}
+      >
+        <View style={[styles.coverWrapper, { width: cardWidth, height: cardWidth }]}>
+          {album.coverUri ? (
+            <Image
+              source={{ uri: album.coverUri }}
+              style={styles.coverImage}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={150}
+            />
+          ) : (
+            <View style={styles.placeholderCover} />
+          )}
+        </View>
 
-      <Text style={styles.title} numberOfLines={1}>
-        {album.title}
-      </Text>
-      <Text style={styles.count}>{album.assetCount} items</Text>
-    </TouchableOpacity>
+        <Text style={styles.title} numberOfLines={1}>
+          {album.title}
+        </Text>
+        <Text style={styles.count}>{album.assetCount} items</Text>
+      </PressableScale>
+    </Animated.View>
   );
 });
 

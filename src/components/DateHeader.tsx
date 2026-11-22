@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import { DarkTheme, Fonts, Spacing } from '../theme/theme';
+import { PressableScale } from './ui/pressable-scale';
 
 interface DateHeaderProps {
   title: string;
@@ -51,9 +52,16 @@ export const DateHeader = memo(function DateHeader({ title, onSelectAll }: DateH
     <View style={styles.container}>
       <Text style={styles.title}>{title}</Text>
       {onSelectAll && (
-        <TouchableOpacity onPress={onSelectAll} activeOpacity={0.7} style={styles.selectButton}>
+        <PressableScale
+          haptic
+          scaleTo={0.92}
+          onPress={onSelectAll}
+          style={styles.selectButton}
+          accessibilityRole="button"
+          accessibilityLabel={`Select all photos from ${title}`}
+        >
           <Text style={styles.selectText}>Select</Text>
-        </TouchableOpacity>
+        </PressableScale>
       )}
     </View>
   );

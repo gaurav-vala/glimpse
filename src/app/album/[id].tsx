@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet, View, Text, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MediaGrid } from '../../components/MediaGrid';
@@ -10,6 +10,7 @@ import { mediaService } from '../../features/media/mediaService';
 import { MediaItem } from '../../features/media/types';
 import { DarkTheme, Palette, Spacing, Fonts } from '../../theme/theme';
 import { AppIcon, ArrowLeft02Icon } from '../../components/ui/Icon';
+import { PressableScale } from '../../components/ui/pressable-scale';
 
 export default function AlbumDetailScreen() {
   const router = useRouter();
@@ -53,13 +54,16 @@ export default function AlbumDetailScreen() {
         />
       ) : (
         <View style={styles.header}>
-          <TouchableOpacity
+          <PressableScale
+            haptic
+            scaleTo={0.9}
             style={styles.backButton}
             onPress={() => router.back()}
-            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <AppIcon icon={ArrowLeft02Icon} size={22} color={DarkTheme.colors.text} />
-          </TouchableOpacity>
+          </PressableScale>
 
           <View style={styles.titleColumn}>
             <Text style={styles.title} numberOfLines={1}>

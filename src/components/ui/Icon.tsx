@@ -14,7 +14,13 @@ import {
   RefreshIcon,
   Shield01Icon,
   Image01Icon,
+  Image02Icon,
   SparklesIcon,
+  Calendar03Icon,
+  File02Icon,
+  Time01Icon,
+  Video01Icon,
+  Video02Icon,
 } from '@hugeicons/core-free-icons';
 
 export {
@@ -31,7 +37,13 @@ export {
   RefreshIcon,
   Shield01Icon,
   Image01Icon,
+  Image02Icon,
   SparklesIcon,
+  Calendar03Icon,
+  File02Icon,
+  Time01Icon,
+  Video01Icon,
+  Video02Icon,
 };
 
 export interface AppIconProps {

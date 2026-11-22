@@ -11,6 +11,7 @@ import { MediaItem } from '../../features/media/types';
 import { DarkTheme, Palette, Spacing, Fonts } from '../../theme/theme';
 import { SparklesIcon } from '../../components/ui/Icon';
 import { Button } from '../../components/ui/button';
+import { SwipeTabWrapper } from '../../components/SwipeTabWrapper';
 
 export default function CameraTab() {
   const router = useRouter();
@@ -44,50 +45,56 @@ export default function CameraTab() {
     }
   };
 
+  const handleSwipeLeft = useCallback(() => {
+    router.navigate('/(tabs)/albums');
+  }, [router]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Top Header / Selection Bar (SEL-2) */}
-      {isSelectionMode ? (
-        <SelectionTopBar
-          selectedCount={selectedIds.size}
-          onClose={exitSelectionMode}
-        />
-      ) : (
-        <View style={styles.header}>
-          <Text style={styles.title}>Camera</Text>
-          {mediaService.isDemoMode && (
-            <Button
-              label="Add Photo"
-              icon={SparklesIcon}
-              size="sm"
-              shape="pill"
-              variant="frosted"
-              onPress={() => {
-                mediaService.simulateAddPhoto();
-                refresh();
-              }}
-            />
-          )}
-        </View>
-      )}
+      <SwipeTabWrapper onSwipeLeft={handleSwipeLeft} enabled={!isSelectionMode}>
+        {/* Top Header / Selection Bar (SEL-2) */}
+        {isSelectionMode ? (
+          <SelectionTopBar
+            selectedCount={selectedIds.size}
+            onClose={exitSelectionMode}
+          />
+        ) : (
+          <View style={styles.header}>
+            <Text style={styles.title}>Camera</Text>
+            {mediaService.isDemoMode && (
+              <Button
+                label="Add Photo"
+                icon={SparklesIcon}
+                size="sm"
+                shape="pill"
+                variant="frosted"
+                onPress={() => {
+                  mediaService.simulateAddPhoto();
+                  refresh();
+                }}
+              />
+            )}
+          </View>
+        )}
 
-      {/* Main Virtualized Media Grid */}
-      <MediaGrid
-        items={collection.items}
-        status={collection.status}
-        hasNextPage={collection.hasNextPage}
-        onLoadNextPage={loadNextPage}
-        onRefresh={refresh}
-        onItemPress={handleItemPress}
-      />
-
-      {/* Selection Bottom Action Bar (SEL-4) */}
-      {isSelectionMode && (
-        <SelectionBottomBar
-          selectedCount={selectedIds.size}
-          onDelete={handleDeleteSelected}
+        {/* Main Virtualized Media Grid */}
+        <MediaGrid
+          items={collection.items}
+          status={collection.status}
+          hasNextPage={collection.hasNextPage}
+          onLoadNextPage={loadNextPage}
+          onRefresh={refresh}
+          onItemPress={handleItemPress}
         />
-      )}
+
+        {/* Selection Bottom Action Bar (SEL-4) */}
+        {isSelectionMode && (
+          <SelectionBottomBar
+            selectedCount={selectedIds.size}
+            onDelete={handleDeleteSelected}
+          />
+        )}
+      </SwipeTabWrapper>
     </SafeAreaView>
   );
 }

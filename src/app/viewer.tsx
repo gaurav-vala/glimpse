@@ -28,6 +28,8 @@ import { useMediaStore } from '../features/media/store';
 import { mediaService } from '../features/media/mediaService';
 import { MediaItem, SourceKey } from '../features/media/types';
 import { InfoSheet } from '../components/InfoSheet';
+import { ConfirmPopup } from '../components/ui/popup';
+import { PressableScale } from '../components/ui/pressable-scale';
 import {
   AppIcon,
   ArrowLeft02Icon,
@@ -64,6 +66,8 @@ export default function FullscreenViewer() {
 
   const [showBars, setShowBars] = useState(true);
   const [infoSheetVisible, setInfoSheetVisible] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
@@ -104,31 +108,30 @@ export default function FullscreenViewer() {
 
   const handleDelete = () => {
     if (!currentItem) return;
+    setDeleteConfirmVisible(true);
+  };
 
-    Alert.alert('Delete', 'Delete this item?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await mediaService.deleteAssets([currentItem.id]);
-            removeItems([currentItem.id]);
+  const executeDelete = async () => {
+    if (!currentItem) return;
+    setIsDeleting(true);
+    try {
+      await mediaService.deleteAssets([currentItem.id]);
+      removeItems([currentItem.id]);
 
-            const nextItems = items.filter((i) => i.id !== currentItem.id);
-            if (nextItems.length === 0) {
-              router.back();
-            } else {
-              setDeletedIds((prev) => new Set([...prev, currentItem.id]));
-              const nextIdx = Math.min(currentIndex, nextItems.length - 1);
-              setCurrentIndex(nextIdx);
-            }
-          } catch {
-            Alert.alert('Error', "Couldn't delete item. Try again.");
-          }
-        },
-      },
-    ]);
+      const nextItems = items.filter((i) => i.id !== currentItem.id);
+      setDeleteConfirmVisible(false);
+      if (nextItems.length === 0) {
+        router.back();
+      } else {
+        setDeletedIds((prev) => new Set([...prev, currentItem.id]));
+        const nextIdx = Math.min(currentIndex, nextItems.length - 1);
+        setCurrentIndex(nextIdx);
+      }
+    } catch {
+      Alert.alert('Error', "Couldn't delete item. Try again.");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const formatDateTitle = (timestamp?: number) => {
@@ -175,13 +178,16 @@ export default function FullscreenViewer() {
         <Animated.View
           style={[styles.topBar, { paddingTop: Math.max(insets.top, 14) }]}
         >
-          <TouchableOpacity
+          <PressableScale
+            haptic
+            scaleTo={0.9}
             style={styles.circleButton}
             onPress={() => router.back()}
-            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
           >
             <AppIcon icon={ArrowLeft02Icon} size={22} color="#FFFFFF" />
-          </TouchableOpacity>
+          </PressableScale>
 
           <View style={styles.headerTitleColumn}>
             <Text style={styles.headerDateText}>
@@ -192,13 +198,16 @@ export default function FullscreenViewer() {
             </Text>
           </View>
 
-          <TouchableOpacity
+          <PressableScale
+            haptic
+            scaleTo={0.9}
             style={styles.circleButton}
             onPress={() => setInfoSheetVisible(true)}
-            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Information"
           >
             <AppIcon icon={InformationCircleIcon} size={22} color="#FFFFFF" />
-          </TouchableOpacity>
+          </PressableScale>
         </Animated.View>
       )}
 
@@ -211,34 +220,43 @@ export default function FullscreenViewer() {
           ]}
         >
           <View style={styles.bottomPill}>
-            <TouchableOpacity
+            <PressableScale
+              haptic
+              scaleTo={0.92}
               style={styles.bottomActionButton}
               onPress={handleShare}
-              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Share"
             >
               <AppIcon icon={Share01Icon} size={20} color="#FFFFFF" />
               <Text style={styles.bottomActionText}>Share</Text>
-            </TouchableOpacity>
+            </PressableScale>
 
-            <TouchableOpacity
+            <PressableScale
+              haptic
+              scaleTo={0.92}
               style={styles.bottomActionButton}
               onPress={() => setInfoSheetVisible(true)}
-              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Details"
             >
               <AppIcon icon={InformationCircleIcon} size={20} color="#FFFFFF" />
               <Text style={styles.bottomActionText}>Info</Text>
-            </TouchableOpacity>
+            </PressableScale>
 
-            <TouchableOpacity
+            <PressableScale
+              haptic
+              scaleTo={0.92}
               style={styles.bottomActionButton}
               onPress={handleDelete}
-              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Delete"
             >
               <AppIcon icon={Delete02Icon} size={20} color={Palette.destructive} />
               <Text style={[styles.bottomActionText, { color: Palette.destructive }]}>
                 Delete
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           </View>
         </Animated.View>
       )}
@@ -251,6 +269,18 @@ export default function FullscreenViewer() {
           onClose={() => setInfoSheetVisible(false)}
         />
       )}
+
+      {/* Delete Confirmation Popup */}
+      <ConfirmPopup
+        visible={deleteConfirmVisible}
+        onClose={() => setDeleteConfirmVisible(false)}
+        title="Delete Item?"
+        subtitle="This media file will be permanently removed from your device storage."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isConfirming={isDeleting}
+        onConfirm={executeDelete}
+      />
     </View>
   );
 }

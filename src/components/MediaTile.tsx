@@ -1,6 +1,7 @@
-import React, { memo } from 'react';
+import React, { memo, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { AppIcon, PlayIcon, Tick02Icon } from './ui/Icon';
 import { DarkTheme, Typography, Radius } from '../theme/theme';
 
@@ -68,16 +69,43 @@ export const MediaTile = memo(function MediaTile({
       {/* Selection Overlay (SEL-3) */}
       {isSelectionMode && (
         <View style={[styles.selectionOverlay, isSelected && styles.selectedOverlay]}>
-          <View style={[styles.checkCircle, isSelected && styles.checkCircleSelected]}>
-            {isSelected && (
-              <AppIcon icon={Tick02Icon} size={11} color="#FFFFFF" strokeWidth={3} />
-            )}
-          </View>
+          <AnimatedCheckCircle isSelected={isSelected} />
         </View>
       )}
     </TouchableOpacity>
   );
 });
+
+function AnimatedCheckCircle({ isSelected }: { isSelected: boolean }) {
+  const scale = useSharedValue(isSelected ? 1 : 0.7);
+
+  useEffect(() => {
+    if (isSelected) {
+      scale.value = 0.6;
+      scale.value = withSpring(1, { damping: 12, stiffness: 260 });
+    } else {
+      scale.value = 0.7;
+    }
+  }, [isSelected, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        styles.checkCircle,
+        isSelected && styles.checkCircleSelected,
+        animatedStyle,
+      ]}
+    >
+      {isSelected && (
+        <AppIcon icon={Tick02Icon} size={11} color="#FFFFFF" strokeWidth={3} />
+      )}
+    </Animated.View>
+  );
+}
 
 const styles = StyleSheet.create({
   container: {

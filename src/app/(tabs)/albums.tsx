@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { AlbumCard } from '../../components/AlbumCard';
+import { SwipeTabWrapper } from '../../components/SwipeTabWrapper';
 import { mediaService } from '../../features/media/mediaService';
 import { Album } from '../../features/media/types';
 import { DarkTheme, Palette, Spacing, Fonts } from '../../theme/theme';
@@ -78,41 +79,48 @@ export default function AlbumsTab() {
     });
   };
 
+  const handleSwipeRight = useCallback(() => {
+    router.navigate('/(tabs)/index');
+  }, [router]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Albums</Text>
-      </View>
-
-      {loading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator color={DarkTheme.colors.accent} size="large" />
+      <SwipeTabWrapper onSwipeRight={handleSwipeRight}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Albums</Text>
         </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={DarkTheme.colors.accent}
-              colors={[DarkTheme.colors.accent]}
-            />
-          }
-        >
-          <View style={styles.grid}>
-            {albums.map((album) => (
-              <AlbumCard
-                key={album.id}
-                album={album}
-                cardWidth={CARD_WIDTH}
-                onPress={handleAlbumPress}
-              />
-            ))}
+
+        {loading ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator color={DarkTheme.colors.accent} size="large" />
           </View>
-        </ScrollView>
-      )}
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={DarkTheme.colors.accent}
+                colors={[DarkTheme.colors.accent]}
+              />
+            }
+          >
+            <View style={styles.grid}>
+              {albums.map((album, index) => (
+                <AlbumCard
+                  key={album.id}
+                  album={album}
+                  index={index}
+                  cardWidth={CARD_WIDTH}
+                  onPress={handleAlbumPress}
+                />
+              ))}
+            </View>
+          </ScrollView>
+        )}
+      </SwipeTabWrapper>
     </SafeAreaView>
   );
 }

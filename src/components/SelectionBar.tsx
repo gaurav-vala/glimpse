@@ -1,13 +1,15 @@
-import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { SlideInDown, SlideInUp } from 'react-native-reanimated';
 import {
   AppIcon,
   Cancel01Icon,
   Delete02Icon,
   Share01Icon,
 } from './ui/Icon';
-import { DarkTheme, Palette, Typography, Spacing, Radius } from '../theme/theme';
+import { ConfirmPopup } from './ui/popup';
+import { DarkTheme, Palette, Spacing } from '../theme/theme';
 
 interface SelectionTopBarProps {
   selectedCount: number;
@@ -24,7 +26,10 @@ interface SelectionBottomBarProps {
 export function SelectionTopBar({ selectedCount, onClose }: SelectionTopBarProps) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.topBar, { paddingTop: insets.top + Spacing.xs }]}>
+    <Animated.View
+      entering={SlideInUp.duration(220)}
+      style={[styles.topBar, { paddingTop: insets.top + Spacing.xs }]}
+    >
       <TouchableOpacity
         style={styles.iconButton}
         onPress={onClose}
@@ -38,7 +43,7 @@ export function SelectionTopBar({ selectedCount, onClose }: SelectionTopBarProps
       </Text>
 
       <View style={styles.placeholderButton} />
-    </View>
+    </Animated.View>
   );
 }
 
@@ -49,47 +54,57 @@ export function SelectionBottomBar({
   isDeleting,
 }: SelectionBottomBarProps) {
   const insets = useSafeAreaInsets();
-
-  const confirmDelete = () => {
-    Alert.alert(
-      'Delete Media',
-      `Delete ${selectedCount} ${selectedCount === 1 ? 'item' : 'items'}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: onDelete },
-      ]
-    );
-  };
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
-    <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-      {/* Share (only available when exactly 1 item selected) (SEL-4) */}
-      {selectedCount === 1 && onShare ? (
+    <>
+      <Animated.View
+        entering={SlideInDown.duration(220)}
+        style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}
+      >
+        {/* Share (only available when exactly 1 item selected) (SEL-4) */}
+        {selectedCount === 1 && onShare ? (
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={onShare}
+            activeOpacity={0.7}
+          >
+            <AppIcon icon={Share01Icon} size={20} color={DarkTheme.colors.text} />
+            <Text style={styles.actionButtonText}>Share</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.emptyAction} />
+        )}
+
+        {/* Delete button triggering popup (DEL-2) */}
         <TouchableOpacity
-          style={styles.actionButton}
-          onPress={onShare}
+          style={[styles.actionButton, isDeleting && styles.actionDisabled]}
+          onPress={() => setConfirmOpen(true)}
+          disabled={isDeleting || selectedCount === 0}
           activeOpacity={0.7}
         >
-          <AppIcon icon={Share01Icon} size={20} color={DarkTheme.colors.text} />
-          <Text style={styles.actionButtonText}>Share</Text>
+          <AppIcon icon={Delete02Icon} size={20} color={Palette.destructive} />
+          <Text style={[styles.actionButtonText, { color: Palette.destructive }]}>
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Text>
         </TouchableOpacity>
-      ) : (
-        <View style={styles.emptyAction} />
-      )}
+      </Animated.View>
 
-      {/* Delete (DEL-2) */}
-      <TouchableOpacity
-        style={[styles.actionButton, isDeleting && styles.actionDisabled]}
-        onPress={confirmDelete}
-        disabled={isDeleting || selectedCount === 0}
-        activeOpacity={0.7}
-      >
-        <AppIcon icon={Delete02Icon} size={20} color={Palette.destructive} />
-        <Text style={[styles.actionButtonText, { color: Palette.destructive }]}>
-          {isDeleting ? 'Deleting...' : 'Delete'}
-        </Text>
-      </TouchableOpacity>
-    </View>
+      {/* Modern OLED Confirm Popup */}
+      <ConfirmPopup
+        visible={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="Delete Media?"
+        subtitle={`Delete ${selectedCount} ${selectedCount === 1 ? 'selected item' : 'selected items'} from device storage? This cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isConfirming={isDeleting}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          onDelete();
+        }}
+      />
+    </>
   );
 }
 
@@ -98,49 +113,58 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.sm,
-    backgroundColor: 'rgba(12, 13, 17, 0.95)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DarkTheme.colors.border,
-  },
-  topBarTitle: {
-    ...Typography.sectionHeader,
-    color: DarkTheme.colors.text,
-    fontSize: 16,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    zIndex: 50,
   },
   iconButton: {
-    padding: Spacing.xs,
-    borderRadius: Radius.round,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   placeholderButton: {
-    width: 32,
+    width: 40,
+  },
+  topBarTitle: {
+    color: DarkTheme.colors.text,
+    fontSize: 16,
+    fontFamily: DarkTheme.colors.text ? 'PlusJakartaSans-SemiBold' : undefined,
+    fontWeight: '600',
   },
   bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-around',
+    alignItems: 'center',
+    backgroundColor: 'rgba(20, 20, 22, 0.95)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
     paddingTop: Spacing.md,
-    backgroundColor: 'rgba(12, 13, 17, 0.95)',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: DarkTheme.colors.border,
+    zIndex: 50,
   },
   actionButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    minWidth: 64,
-  },
-  emptyAction: {
-    minWidth: 64,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.xs,
   },
   actionDisabled: {
-    opacity: 0.5,
+    opacity: 0.35,
   },
   actionButtonText: {
-    ...Typography.caption,
     color: DarkTheme.colors.text,
     fontSize: 11,
+    marginTop: 4,
     fontWeight: '500',
+  },
+  emptyAction: {
+    width: 60,
   },
 });

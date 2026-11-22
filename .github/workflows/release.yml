@@ -29,6 +29,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: 🐘 Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: 🟩 Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -37,9 +40,6 @@ jobs:
 
       - name: 📦 Install dependencies
         run: npm ci
-
-      - name: ⚙️ Setup Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: 🏗️ Expo Prebuild (Generate Android Native Project)
         run: npx expo prebuild --platform android --clean

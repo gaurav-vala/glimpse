@@ -12,6 +12,15 @@ import { Download01Icon, SparklesIcon } from './ui/Icon';
 import { useUpdateStore } from '../features/updates/useUpdateStore';
 import { DarkTheme, Fonts, Radius, Spacing } from '../theme/theme';
 
+function formatReleaseNotes(raw: string): string {
+  return raw
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^[-*]\s+/gm, '• ')
+    .trim();
+}
+
 export function UpdateModal() {
   const isModalVisible = useUpdateStore((s) => s.isModalVisible);
   const closeModal = useUpdateStore((s) => s.closeModal);
@@ -72,7 +81,7 @@ export function UpdateModal() {
           contentContainerStyle={styles.notesContent}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.notesText}>{latestRelease.body}</Text>
+          <Text style={styles.notesText}>{formatReleaseNotes(latestRelease.body)}</Text>
         </ScrollView>
 
         {/* Progress Bar (when downloading) */}

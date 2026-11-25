@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { Platform, StyleSheet, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import {
@@ -10,10 +10,12 @@ import {
 } from './ui/Icon';
 import { ConfirmPopup } from './ui/popup';
 import { PressableScale } from './ui/pressable-scale';
+import { mediaService } from '../features/media/mediaService';
 import { DarkTheme, Fonts, Palette, Radius, Spacing } from '../theme/theme';
 
 interface SelectionTopBarProps {
   selectedCount: number;
+  allSelected?: boolean;
   onClose: () => void;
   onSelectAll?: () => void;
 }
@@ -27,14 +29,15 @@ interface SelectionBottomBarProps {
 
 export function SelectionTopBar({
   selectedCount,
+  allSelected = false,
   onClose,
   onSelectAll,
 }: SelectionTopBarProps) {
-  const insets = useSafeAreaInsets();
+  // Parent screens already wrap content in <SafeAreaView edges={['top']}>; avoid double top inset jump
   return (
     <Animated.View
       entering={FadeInUp.duration(180)}
-      style={[styles.topBar, { paddingTop: insets.top + Spacing.xs }]}
+      style={[styles.topBar, { paddingTop: Spacing.xs }]}
     >
       <PressableScale
         haptic
@@ -60,9 +63,9 @@ export function SelectionTopBar({
           style={styles.selectAllBtn}
           onPress={onSelectAll}
           accessibilityRole="button"
-          accessibilityLabel="Select all"
+          accessibilityLabel={allSelected ? 'Clear selection' : 'Select all'}
         >
-          <Text style={styles.selectAllText}>All</Text>
+          <Text style={styles.selectAllText}>{allSelected ? 'Clear' : 'All'}</Text>
         </PressableScale>
       ) : (
         <View style={styles.placeholderButton} />
@@ -79,6 +82,14 @@ export function SelectionBottomBar({
 }: SelectionBottomBarProps) {
   const insets = useSafeAreaInsets();
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const handleDeletePress = () => {
+    if (Platform.OS === 'android' && Number(Platform.Version) >= 30 && !mediaService.isDemoMode) {
+      onDelete();
+      return;
+    }
+    setConfirmOpen(true);
+  };
 
   return (
     <>
@@ -118,7 +129,7 @@ export function SelectionBottomBar({
             haptic
             scaleTo={0.92}
             style={[styles.pillAction, isDeleting && styles.actionDisabled]}
-            onPress={() => setConfirmOpen(true)}
+            onPress={handleDeletePress}
             disabled={isDeleting || selectedCount === 0}
             accessibilityRole="button"
             accessibilityLabel={`Delete ${selectedCount} items`}

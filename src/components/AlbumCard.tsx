@@ -1,34 +1,66 @@
-import React, { memo } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
-import { Image } from 'expo-image';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Album } from '../features/media/types';
-import { DarkTheme, Fonts, Spacing, Radius } from '../theme/theme';
-import { PressableScale } from './ui/pressable-scale';
+import { Image } from "expo-image";
+import { memo, useCallback, useRef } from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { Album } from "../features/media/types";
+import { useVideoThumbnail } from "../features/media/videoThumbnailService";
+import { DarkTheme, Fonts, Radius, Spacing } from "../theme/theme";
+import { AppIcon, PlayIcon } from "./ui/Icon";
+import { PressableScale } from "./ui/pressable-scale";
 
 interface AlbumCardProps {
   album: Album;
   cardWidth: number;
-  index?: number;
   onPress: (album: Album) => void;
 }
 
 /**
  * AlbumCard (ALB-1, ALB-2)
  * 2-column grid of rounded squircle cover cards (radius 18),
- * with album title and item count, press scale animation, and entrance animation.
+ * with album title and item count and press scale animation.
  */
 export const AlbumCard = memo(function AlbumCard({
   album,
   cardWidth,
-  index = 0,
   onPress,
 }: AlbumCardProps) {
+  const isVideoCover = album.coverMediaType === "video";
+  const displayCoverUri = useVideoThumbnail(
+    album.coverAssetId ?? album.id,
+    album.coverUri,
+    isVideoCover,
+    384
+  );
+
+  const loadStartRef = useRef<number>(0);
+
+  const handleLoadStart = useCallback(() => {
+    loadStartRef.current = Date.now();
+  }, []);
+
+  const handleLoad = useCallback(
+    (e: { source?: { width?: number; height?: number } }) => {
+      if (!loadStartRef.current) return;
+      const ms = Date.now() - loadStartRef.current;
+      if (ms > 350) {
+        console.warn(
+          `[Perf:AlbumCoverSlow] title=${album.title} ms=${ms} src=${e.source?.width ?? 0}x${e.source?.height ?? 0}`
+        );
+      }
+    },
+    [album.title]
+  );
+
+  const handleError = useCallback(
+    (e: { error?: string }) => {
+      console.warn(
+        `[Perf:AlbumCoverError] title=${album.title} uri=${album.coverUri} err=${e.error}`
+      );
+    },
+    [album.title, album.coverUri]
+  );
+
   return (
-    <Animated.View
-      entering={FadeInDown.delay(Math.min(index * 35, 300)).duration(240).springify()}
-      style={[styles.container, { width: cardWidth }]}
-    >
+    <View style={[styles.container, { width: cardWidth }]}>
       <PressableScale
         haptic
         scaleTo={0.96}
@@ -37,26 +69,44 @@ export const AlbumCard = memo(function AlbumCard({
         accessibilityLabel={`Album ${album.title}`}
       >
         <View style={[styles.coverWrapper, { width: cardWidth, height: cardWidth }]}>
-          {album.coverUri ? (
+          {displayCoverUri ? (
             <Image
-              source={{ uri: album.coverUri }}
+              source={{ uri: displayCoverUri, width: 384, height: 384 }}
               recyclingKey={album.id}
               style={styles.coverImage}
               contentFit="cover"
-              cachePolicy="memory-disk"
-              transition={150}
+              decodeFormat="rgb"
+              cachePolicy={isVideoCover ? 'memory' : 'memory-disk'}
+              priority="normal"
+              transition={0}
+              onLoadStart={handleLoadStart}
+              onLoad={handleLoad}
+              onError={handleError}
             />
           ) : (
-            <View style={styles.placeholderCover} />
+            <View style={styles.placeholderCover}>
+              {isVideoCover && (
+                <View style={styles.placeholderVideoBadge}>
+                  <AppIcon
+                    icon={PlayIcon}
+                    size={22}
+                    color="rgba(255, 255, 255, 0.55)"
+                    strokeWidth={2}
+                  />
+                </View>
+              )}
+            </View>
           )}
         </View>
 
         <Text style={styles.title} numberOfLines={1}>
           {album.title}
         </Text>
-        <Text style={styles.count}>{album.assetCount} items</Text>
+        <Text style={styles.count}>
+          {album.assetCount} {album.assetCount === 1 ? 'item' : 'items'}
+        </Text>
       </PressableScale>
-    </Animated.View>
+    </View>
   );
 });
 
@@ -80,6 +130,16 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: DarkTheme.colors.tilePlaceholder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderVideoBadge: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontFamily: Fonts.semiBold,

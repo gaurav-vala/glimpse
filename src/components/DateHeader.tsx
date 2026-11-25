@@ -5,6 +5,7 @@ import { PressableScale } from './ui/pressable-scale';
 
 interface DateHeaderProps {
   title: string;
+  allSelected?: boolean;
   onSelectAll?: () => void;
 }
 
@@ -42,7 +43,11 @@ export function formatDateHeader(timestamp: number): string {
   return monthYearFormatter.format(date);
 }
 
-export const DateHeader = memo(function DateHeader({ title, onSelectAll }: DateHeaderProps) {
+export const DateHeader = memo(function DateHeader({
+  title,
+  allSelected = false,
+  onSelectAll,
+}: DateHeaderProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{title}</Text>
@@ -53,9 +58,9 @@ export const DateHeader = memo(function DateHeader({ title, onSelectAll }: DateH
           onPress={onSelectAll}
           style={styles.selectButton}
           accessibilityRole="button"
-          accessibilityLabel={`Select all photos from ${title}`}
+          accessibilityLabel={`${allSelected ? 'Deselect' : 'Select'} all photos from ${title}`}
         >
-          <Text style={styles.selectText}>Select</Text>
+          <Text style={styles.selectText}>{allSelected ? 'Deselect' : 'Select'}</Text>
         </PressableScale>
       )}
     </View>

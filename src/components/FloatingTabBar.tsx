@@ -27,7 +27,6 @@ export function FloatingTabBar({
   state,
   descriptors,
   emitter,
-  navigateToTab,
 }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const isSelectionMode = useSelectionStore((s) => s.isSelectionMode);
@@ -80,15 +79,11 @@ export function FloatingTabBar({
             Haptics.selectionAsync().catch(() => {});
             setActiveTab(index);
 
-            const event = emitter.emit({
+            emitter.emit({
               type: 'tabPress',
               target: route.key,
               canPreventDefault: true,
             });
-
-            if (state.index !== index && !event.defaultPrevented) {
-              navigateToTab(route.key);
-            }
           };
 
           return (

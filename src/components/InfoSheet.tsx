@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import { mediaService } from '../features/media/mediaService';
 import { MediaItem } from '../features/media/types';
 import {
   AppIcon,
@@ -29,30 +30,56 @@ interface InfoSheetProps {
   onClose: () => void;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function InfoSheet({ item, visible, onClose }: InfoSheetProps) {
-  const [fileSizeText, setFileSizeText] = useState<string>('Available locally');
+  const [resolvedSize, setResolvedSize] = useState<{ id: string; text: string } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
-    if (visible && item && item.uri.startsWith('file://')) {
-      FileSystem.getInfoAsync(item.uri)
-        .then((info) => {
-          if (
-            isMounted &&
-            info.exists &&
-            'size' in info &&
-            typeof info.size === 'number'
-          ) {
-            const mb = (info.size / (1024 * 1024)).toFixed(1);
-            setFileSizeText(`${mb} MB`);
+    if (!visible || !item) return;
+
+    (async () => {
+      try {
+        let localFileUri = item.fileUri?.startsWith('file://')
+          ? item.fileUri
+          : item.uri.startsWith('file://')
+          ? item.uri
+          : null;
+
+        if (!localFileUri && !mediaService.isDemoMode) {
+          const assetInfo = await mediaService.getAssetInfo(item.id);
+          if (assetInfo?.localUri?.startsWith('file://')) {
+            localFileUri = assetInfo.localUri;
           }
-        })
-        .catch(() => {});
-    }
+        }
+
+        if (localFileUri) {
+          const info = await FileSystem.getInfoAsync(localFileUri);
+          if (isMounted && info.exists && 'size' in info && typeof info.size === 'number') {
+            setResolvedSize({ id: item.id, text: formatBytes(info.size) });
+            return;
+          }
+        }
+      } catch {
+        // Fallback below
+      }
+      if (isMounted) {
+        setResolvedSize({ id: item.id, text: 'Available locally' });
+      }
+    })();
+
     return () => {
       isMounted = false;
     };
   }, [visible, item]);
+
+  const fileSizeText =
+    resolvedSize && resolvedSize.id === item.id ? resolvedSize.text : 'Available locally';
 
   const dateStr = infoDateFormatter.format(new Date(item.creationTime));
 
@@ -145,7 +172,7 @@ function InfoRow({
         <AppIcon icon={icon} size={17} color={DarkTheme.colors.textMuted} strokeWidth={1.8} />
         <Text style={styles.label}>{label}</Text>
       </View>
-      <Text style={styles.value} numberOfLines={2}>
+      <Text style={styles.value} numberOfLines={1} ellipsizeMode="middle">
         {value}
       </Text>
     </View>

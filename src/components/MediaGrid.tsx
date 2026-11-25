@@ -1,27 +1,25 @@
 import { FlashList } from "@shopify/flash-list";
 import { useCallback, useMemo } from "react";
 import {
-    ActivityIndicator,
-    Dimensions,
-    RefreshControl,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MediaItem } from "../features/media/types";
 import { useSelectionStore } from "../features/selection/store";
-import { DarkTheme, Spacing } from "../theme/theme";
+import { DarkTheme, Fonts, Spacing } from "../theme/theme";
 import { DateHeader, formatDateHeader } from "./DateHeader";
 import { MediaTile } from "./MediaTile";
+import { Button } from "./ui/button";
 import { AppIcon, Image01Icon } from "./ui/Icon";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const NUM_COLUMNS = 3;
 const HORIZONTAL_PADDING = Spacing.md; // 12dp outer margin
 const COLUMN_GAP = 6; // 6dp spacing between floating cards
-const AVAILABLE_WIDTH =
-  SCREEN_WIDTH - HORIZONTAL_PADDING * 2 - COLUMN_GAP * (NUM_COLUMNS - 1);
-const TILE_SIZE = AVAILABLE_WIDTH / NUM_COLUMNS;
 
 type GridItem =
   | { type: "header"; id: string; title: string; dayItemIds: string[] }
@@ -44,25 +42,20 @@ export function MediaGrid({
   onRefresh,
   onItemPress,
 }: MediaGridProps) {
+  const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const availableWidth =
+    screenWidth - HORIZONTAL_PADDING * 2 - COLUMN_GAP * (NUM_COLUMNS - 1);
+  const tileSize = availableWidth / NUM_COLUMNS;
+
   const isSelectionMode = useSelectionStore((s) => s.isSelectionMode);
   const selectedIds = useSelectionStore((s) => s.selectedIds);
-  const selectAll = useSelectionStore((s) => s.selectAll);
+  const toggleGroup = useSelectionStore((s) => s.toggleGroup);
 
-  // Group items by day for date headers (GRID-6)
+  // Group items by section header for date headers (GRID-6)
   const gridData = useMemo<GridItem[]>(() => {
-    if (__DEV__) {
-      console.log(
-        "[MediaGrid Items Top 10]",
-        items.slice(0, 10).map((i) => ({
-          id: i.id,
-          filename: i.filename,
-          creationTime: i.creationTime,
-          dateStr: new Date(i.creationTime).toISOString(),
-          header: formatDateHeader(i.creationTime),
-        })),
-      );
-    }
     const list: GridItem[] = [];
+    const headerCounts = new Map<string, number>();
     let currentHeader = "";
     let currentDayIds: string[] = [];
     let currentHeaderIndex = -1;
@@ -71,14 +64,18 @@ export function MediaGrid({
       const headerTitle = formatDateHeader(item.creationTime);
       if (headerTitle !== currentHeader) {
         if (currentHeaderIndex >= 0) {
-          (list[currentHeaderIndex] as any).dayItemIds = currentDayIds;
+          (
+            list[currentHeaderIndex] as Extract<GridItem, { type: "header" }>
+          ).dayItemIds = currentDayIds;
         }
         currentHeader = headerTitle;
+        const count = (headerCounts.get(currentHeader) ?? 0) + 1;
+        headerCounts.set(currentHeader, count);
         currentDayIds = [item.id];
         currentHeaderIndex = list.length;
         list.push({
           type: "header",
-          id: `header-${currentHeader}-${item.id}`,
+          id: `header-${currentHeader}-${count}`,
           title: currentHeader,
           dayItemIds: [],
         });
@@ -93,7 +90,9 @@ export function MediaGrid({
     }
 
     if (currentHeaderIndex >= 0) {
-      (list[currentHeaderIndex] as any).dayItemIds = currentDayIds;
+      (
+        list[currentHeaderIndex] as Extract<GridItem, { type: "header" }>
+      ).dayItemIds = currentDayIds;
     }
 
     return list;
@@ -111,17 +110,22 @@ export function MediaGrid({
 
   const handleSelectDay = useCallback(
     (ids: string[]) => {
-      selectAll([...Array.from(selectedIds), ...ids]);
+      toggleGroup(ids);
     },
-    [selectAll, selectedIds],
+    [toggleGroup],
   );
 
   const renderItem = useCallback(
     ({ item }: { item: GridItem }) => {
       if (item.type === "header") {
+        const allSelected =
+          isSelectionMode &&
+          item.dayItemIds.length > 0 &&
+          item.dayItemIds.every((id) => selectedIds.has(id));
         return (
           <DateHeader
             title={item.title}
+            allSelected={allSelected}
             onSelectAll={
               isSelectionMode
                 ? () => handleSelectDay(item.dayItemIds)
@@ -140,13 +144,13 @@ export function MediaGrid({
             uri={media.uri}
             mediaType={media.mediaType}
             duration={media.duration}
-            tileSize={TILE_SIZE}
+            tileSize={tileSize}
             onPress={handleTilePress}
           />
         </View>
       );
     },
-    [isSelectionMode, handleTilePress, handleSelectDay],
+    [isSelectionMode, selectedIds, tileSize, handleTilePress, handleSelectDay],
   );
 
   const getItemType = useCallback((item: GridItem) => {
@@ -155,12 +159,36 @@ export function MediaGrid({
 
   const keyExtractor = useCallback((item: GridItem) => item.id, []);
 
-  // Empty library state (GRID-8)
+  // Empty / Error library state (GRID-8)
   const ListEmptyComponent = useMemo(() => {
     if (status === "loading") {
       return (
         <View style={styles.centerContainer}>
           <ActivityIndicator color={DarkTheme.colors.accent} size="large" />
+        </View>
+      );
+    }
+    if (status === "error") {
+      return (
+        <View style={styles.emptyContainer}>
+          <AppIcon
+            icon={Image01Icon}
+            size={48}
+            color={DarkTheme.colors.textMuted}
+          />
+          <Text style={styles.emptyTitle}>{"Couldn't load media"}</Text>
+          <Text style={styles.emptySubtitle}>
+            There was a problem reading your device library.
+          </Text>
+          <View style={styles.retryWrapper}>
+            <Button
+              label="Try Again"
+              variant="frosted"
+              size="md"
+              shape="pill"
+              onPress={onRefresh}
+            />
+          </View>
         </View>
       );
     }
@@ -177,7 +205,7 @@ export function MediaGrid({
         </Text>
       </View>
     );
-  }, [status]);
+  }, [status, onRefresh]);
 
   const ListFooterComponent = useMemo(() => {
     if (!hasNextPage || items.length === 0) return null;
@@ -191,6 +219,7 @@ export function MediaGrid({
   return (
     <FlashList
       data={gridData}
+      extraData={selectedIds}
       renderItem={renderItem}
       keyExtractor={keyExtractor}
       getItemType={getItemType}
@@ -202,7 +231,7 @@ export function MediaGrid({
           layout.span = 1;
         }
       }}
-      drawDistance={1200}
+      drawDistance={350}
       onEndReached={onLoadNextPage}
       onEndReachedThreshold={0.5}
       refreshControl={
@@ -215,7 +244,10 @@ export function MediaGrid({
       }
       ListEmptyComponent={ListEmptyComponent}
       ListFooterComponent={ListFooterComponent}
-      contentContainerStyle={styles.listContent}
+      contentContainerStyle={[
+        styles.listContent,
+        { paddingBottom: Math.max(insets.bottom + 88, 110) },
+      ]}
     />
   );
 }
@@ -223,7 +255,6 @@ export function MediaGrid({
 const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: HORIZONTAL_PADDING - COLUMN_GAP / 2,
-    paddingBottom: 110, // Generous padding for floating pill tab bar
   },
   tileWrapper: {
     padding: COLUMN_GAP / 2,
@@ -241,15 +272,20 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   emptyTitle: {
+    fontFamily: Fonts.semiBold,
     color: DarkTheme.colors.text,
     fontSize: 16,
-    fontWeight: "600",
     marginTop: Spacing.sm,
   },
   emptySubtitle: {
+    fontFamily: Fonts.regular,
     color: DarkTheme.colors.textMuted,
     fontSize: 13,
     textAlign: "center",
+    lineHeight: 19,
+  },
+  retryWrapper: {
+    marginTop: Spacing.sm,
   },
   footerLoader: {
     paddingVertical: Spacing.lg,

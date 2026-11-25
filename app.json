@@ -2,17 +2,17 @@
   "expo": {
     "name": "Glimpse",
     "slug": "glimpse",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "glimpse",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "icon": "./assets/expo.icon"
     },
     "android": {
       "package": "com.gaurav444.lumagallery",
-      "versionCode": 2,
+      "versionCode": 4,
       "permissions": [
         "REQUEST_INSTALL_PACKAGES"
       ],

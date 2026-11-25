@@ -19,10 +19,12 @@ export interface Album {
   title: string;
   assetCount: number;
   coverUri?: string;
+  coverAssetId?: string;
+  coverMediaType?: MediaType;
   latestTimestamp?: number;
 }
 
-export type SourceKey = 'all' | 'camera' | `album:${string}`;
+export type SourceKey = 'all' | 'camera' | 'favorites' | `album:${string}`;
 
 export type CollectionStatus = 'idle' | 'loading' | 'refreshing' | 'error';
 

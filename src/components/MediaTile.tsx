@@ -1,9 +1,11 @@
-import React, { memo, useEffect, useCallback } from 'react';
+import React, { memo, useEffect, useCallback, useRef } from 'react';
 import { StyleSheet, View, Text, Pressable } from 'react-native';
 import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { AppIcon, PlayIcon, Tick02Icon } from './ui/Icon';
 import { DarkTheme, Typography, Radius } from '../theme/theme';
+import { useVideoThumbnail } from '../features/media/videoThumbnailService';
 import { useSelectionStore } from '../features/selection/store';
 
 interface MediaTileProps {
@@ -49,12 +51,41 @@ export const MediaTile = memo(function MediaTile({
   }, [id, isSelectionMode, toggleItem, onPress]);
 
   const handleLongPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     if (!isSelectionMode) {
       enterSelectionMode(id);
     } else {
       toggleItem(id);
     }
   }, [id, isSelectionMode, enterSelectionMode, toggleItem]);
+
+  const displayUri = useVideoThumbnail(id, uri, mediaType === 'video', 320);
+
+  const loadStartRef = useRef<number>(0);
+
+  const handleLoadStart = useCallback(() => {
+    loadStartRef.current = Date.now();
+  }, []);
+
+  const handleLoad = useCallback(
+    (e: { source?: { width?: number; height?: number } }) => {
+      if (!loadStartRef.current) return;
+      const ms = Date.now() - loadStartRef.current;
+      if (ms > 350) {
+        console.warn(
+          `[Perf:TileSlow] id=${id} type=${mediaType} ms=${ms} src=${e.source?.width ?? 0}x${e.source?.height ?? 0}`
+        );
+      }
+    },
+    [id, mediaType]
+  );
+
+  const handleError = useCallback(
+    (e: { error?: string }) => {
+      console.warn(`[Perf:TileError] id=${id} type=${mediaType} uri=${uri} err=${e.error}`);
+    },
+    [id, mediaType, uri]
+  );
 
   return (
     <Pressable
@@ -65,15 +96,34 @@ export const MediaTile = memo(function MediaTile({
       onPress={handlePress}
       onLongPress={handleLongPress}
     >
-      <Image
-        source={{ uri }}
-        recyclingKey={id}
-        style={[styles.image, { width: tileSize, height: tileSize }]}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-        priority="low"
-        transition={100}
-      />
+      {displayUri ? (
+        <Image
+          source={{ uri: displayUri, width: 320, height: 320 }}
+          recyclingKey={id}
+          style={[styles.image, { width: tileSize, height: tileSize }]}
+          contentFit="cover"
+          decodeFormat="rgb"
+          cachePolicy={mediaType === 'video' ? 'memory' : 'memory-disk'}
+          priority="normal"
+          transition={0}
+          onLoadStart={handleLoadStart}
+          onLoad={handleLoad}
+          onError={handleError}
+        />
+      ) : (
+        <View style={styles.videoFallback}>
+          {mediaType === 'video' && (
+            <View style={styles.videoFallbackIcon}>
+              <AppIcon
+                icon={PlayIcon}
+                size={18}
+                color="rgba(255, 255, 255, 0.5)"
+                strokeWidth={2}
+              />
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Video duration badge & play glyph (GRID-4) */}
       {mediaType === 'video' && (
@@ -135,6 +185,21 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  videoFallback: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: DarkTheme.colors.tilePlaceholder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoFallbackIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   videoBadge: {
     position: 'absolute',

@@ -3,7 +3,14 @@ import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useVideoPlayer, VideoView } from "expo-video";
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
   BackHandler,
@@ -13,13 +20,18 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { FlatList, Gesture, GestureDetector } from "react-native-gesture-handler";
+import {
+  FlatList,
+  Gesture,
+  GestureDetector,
+} from "react-native-gesture-handler";
 import Animated, {
   FadeIn,
   FadeOut,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -36,9 +48,11 @@ import {
 } from "../components/ui/Icon";
 import { ConfirmPopup } from "../components/ui/popup";
 import { PressableScale } from "../components/ui/pressable-scale";
+import { useFavoritesStore } from "../features/media/favoritesStore";
 import { mediaService } from "../features/media/mediaService";
 import { useMediaStore } from "../features/media/store";
 import { MediaItem, SourceKey } from "../features/media/types";
+import { useVideoThumbnail } from "../features/media/videoThumbnailService";
 import { Fonts, Palette, Radius, Spacing } from "../theme/theme";
 
 const viewerDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -68,45 +82,74 @@ export default function FullscreenViewer() {
     initialIndex?: string;
   }>();
 
+  const isFavoritesSource = source === "favorites";
   const collection = useMediaStore((state) => state.getCollection(source));
   const removeItems = useMediaStore((state) => state.removeItems);
   const loadNextPage = useMediaStore((state) => state.loadNextPage);
   const loadInitial = useMediaStore((state) => state.loadInitial);
 
+  const favoritesMap = useFavoritesStore((state) => state.favoritesMap);
+  const hydrateFavorites = useFavoritesStore((state) => state.hydrate);
+  const toggleFavoriteItem = useFavoritesStore((state) => state.toggleFavorite);
+  const pruneFavorites = useFavoritesStore((state) => state.pruneDeleted);
+
+  useEffect(() => {
+    hydrateFavorites();
+  }, [hydrateFavorites]);
+
   // If source hasn't been loaded yet, trigger loadInitial
   useEffect(() => {
-    if (collection.items.length === 0 && collection.status !== "loading") {
+    if (
+      !isFavoritesSource &&
+      collection.items.length === 0 &&
+      collection.status !== "loading"
+    ) {
       loadInitial(source, source === "camera");
     }
-  }, [collection.items.length, collection.status, loadInitial, source]);
+  }, [
+    isFavoritesSource,
+    collection.items.length,
+    collection.status,
+    loadInitial,
+    source,
+  ]);
 
   const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set());
+  const sourceItems = useMemo(() => {
+    if (isFavoritesSource) {
+      return Object.values(favoritesMap).sort(
+        (a, b) => b.creationTime - a.creationTime,
+      );
+    }
+    return collection.items;
+  }, [isFavoritesSource, favoritesMap, collection.items]);
+
   const items = useMemo(() => {
-    return collection.items.filter((i) => !deletedIds.has(i.id));
-  }, [collection.items, deletedIds]);
+    return sourceItems.filter((i) => !deletedIds.has(i.id));
+  }, [sourceItems, deletedIds]);
 
   // Determine starting index accurately from query params or assetId search
   const computedInitialIndex = useMemo(() => {
     if (initialIndexParam !== undefined) {
       const parsed = parseInt(initialIndexParam, 10);
-      if (!isNaN(parsed) && parsed >= 0 && parsed < collection.items.length) {
+      if (!isNaN(parsed) && parsed >= 0 && parsed < sourceItems.length) {
         return parsed;
       }
     }
-    if (assetId && collection.items.length > 0) {
-      const idx = collection.items.findIndex((i) => i.id === assetId);
+    if (assetId && sourceItems.length > 0) {
+      const idx = sourceItems.findIndex((i) => i.id === assetId);
       if (idx >= 0) return idx;
     }
     return 0;
-  }, [initialIndexParam, assetId, collection.items]);
+  }, [initialIndexParam, assetId, sourceItems]);
 
   const [currentIndex, setCurrentIndex] = useState(computedInitialIndex);
-  const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
   const [showBars, setShowBars] = useState(true);
   const [infoSheetVisible, setInfoSheetVisible] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
 
   const flatListRef = useRef<FlatList<MediaItem>>(null);
   const initialScrollDone = useRef(false);
@@ -141,7 +184,7 @@ export default function FullscreenViewer() {
         }
         router.back();
         return true;
-      }
+      },
     );
     return () => backHandler.remove();
   }, [infoSheetVisible, deleteConfirmVisible, router]);
@@ -150,30 +193,35 @@ export default function FullscreenViewer() {
 
   // Auto-fetch next page when nearing end of current loaded list (VIEW-7)
   useEffect(() => {
-    if (currentIndex >= items.length - 8 && items.length > 0) {
+    if (
+      !isFavoritesSource &&
+      currentIndex >= items.length - 8 &&
+      items.length > 0
+    ) {
       loadNextPage(source);
     }
-  }, [currentIndex, items.length, loadNextPage, source]);
+  }, [isFavoritesSource, currentIndex, items.length, loadNextPage, source]);
 
   const toggleBars = useCallback(() => {
     setShowBars((prev) => !prev);
   }, []);
 
+  const dismissViewer = useCallback(() => {
+    router.back();
+  }, [router]);
+
   const toggleFavorite = useCallback(() => {
     if (!currentItem) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      if (next.has(currentItem.id)) {
-        next.delete(currentItem.id);
-      } else {
-        next.add(currentItem.id);
-      }
-      return next;
-    });
-  }, [currentItem]);
+    toggleFavoriteItem(currentItem);
+  }, [currentItem, toggleFavoriteItem]);
 
-  const isFavorited = currentItem ? favorites.has(currentItem.id) : false;
+  const isFavorited = currentItem
+    ? Boolean(favoritesMap[currentItem.id])
+    : false;
+  const isVideoPlaying = Boolean(
+    currentItem && playingVideoId === currentItem.id,
+  );
 
   const handleShare = async () => {
     if (!currentItem) return;
@@ -183,39 +231,60 @@ export default function FullscreenViewer() {
         Alert.alert("Notice", "Sharing is not supported on this device");
         return;
       }
-      await Sharing.shareAsync(currentItem.uri);
+      await Sharing.shareAsync(currentItem.fileUri || currentItem.uri);
     } catch (err: any) {
       Alert.alert("Share Error", err?.message || "Could not share item");
     }
   };
 
-  const handleDelete = () => {
-    if (!currentItem) return;
-    setDeleteConfirmVisible(true);
-  };
-
   const executeDelete = async () => {
-    if (!currentItem) return;
+    if (!currentItem || isDeleting) return;
     setIsDeleting(true);
     try {
-      await mediaService.deleteAssets([currentItem.id]);
+      const deleted = await mediaService.deleteAssets([currentItem.id]);
+      setDeleteConfirmVisible(false);
+      if (!deleted) {
+        return; // User cancelled Android OS delete confirmation dialog
+      }
+
       removeItems([currentItem.id]);
+      pruneFavorites([currentItem.id]);
+      setIsZoomed(false);
+      setPlayingVideoId(null);
 
       const nextItems = items.filter((i) => i.id !== currentItem.id);
-      setDeleteConfirmVisible(false);
       if (nextItems.length === 0) {
         router.back();
       } else {
         setDeletedIds((prev) => new Set([...prev, currentItem.id]));
         const nextIdx = Math.min(currentIndex, nextItems.length - 1);
         setCurrentIndex(nextIdx);
-        flatListRef.current?.scrollToIndex({ index: nextIdx, animated: false });
+        requestAnimationFrame(() => {
+          flatListRef.current?.scrollToIndex({
+            index: nextIdx,
+            animated: false,
+          });
+        });
       }
     } catch {
       Alert.alert("Error", "Couldn't delete item. Try again.");
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (!currentItem) return;
+    // Android 11+ already presents its own native Scoped Storage confirmation dialog
+    if (
+      Platform.OS === "android" &&
+      Number(Platform.Version) >= 30 &&
+      !mediaService.isDemoMode
+    ) {
+      executeDelete();
+      return;
+    }
+    setDeleteConfirmVisible(true);
   };
 
   const handleMomentumScrollEnd = useCallback(
@@ -225,10 +294,11 @@ export default function FullscreenViewer() {
       if (newIdx >= 0 && newIdx < items.length && newIdx !== currentIndex) {
         setCurrentIndex(newIdx);
         setIsZoomed(false);
+        setPlayingVideoId(null);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
     },
-    [SCREEN_WIDTH, items.length, currentIndex]
+    [SCREEN_WIDTH, items.length, currentIndex],
   );
 
   const getItemLayout = useCallback(
@@ -237,7 +307,7 @@ export default function FullscreenViewer() {
       offset: SCREEN_WIDTH * index,
       index,
     }),
-    [SCREEN_WIDTH]
+    [SCREEN_WIDTH],
   );
 
   const renderItem = useCallback(
@@ -248,7 +318,8 @@ export default function FullscreenViewer() {
         return (
           <VideoSlide
             item={item}
-            isActive={isActive}
+            isPlaying={isActive && playingVideoId === item.id}
+            onPlay={() => setPlayingVideoId(item.id)}
             screenWidth={SCREEN_WIDTH}
             screenHeight={SCREEN_HEIGHT}
           />
@@ -263,10 +334,18 @@ export default function FullscreenViewer() {
           screenHeight={SCREEN_HEIGHT}
           onToggleBars={toggleBars}
           onZoomChange={setIsZoomed}
+          onDismiss={dismissViewer}
         />
       );
     },
-    [currentIndex, SCREEN_WIDTH, SCREEN_HEIGHT, toggleBars]
+    [
+      currentIndex,
+      playingVideoId,
+      SCREEN_WIDTH,
+      SCREEN_HEIGHT,
+      toggleBars,
+      dismissViewer,
+    ],
   );
 
   if (items.length === 0) {
@@ -279,8 +358,11 @@ export default function FullscreenViewer() {
       <FlatList
         ref={flatListRef}
         data={items}
+        extraData={currentIndex}
         horizontal
         pagingEnabled
+        disableIntervalMomentum
+        decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
         initialScrollIndex={
           computedInitialIndex > 0 && computedInitialIndex < items.length
@@ -291,13 +373,13 @@ export default function FullscreenViewer() {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         windowSize={3}
-        maxToRenderPerBatch={1}
-        initialNumToRender={1}
-        removeClippedSubviews={Platform.OS === "android"}
+        maxToRenderPerBatch={2}
+        initialNumToRender={2}
+        removeClippedSubviews={false}
         scrollEnabled={!isZoomed}
         onMomentumScrollEnd={handleMomentumScrollEnd}
         onEndReached={() => {
-          if (currentIndex >= items.length - 8) {
+          if (!isFavoritesSource && currentIndex >= items.length - 8) {
             loadNextPage(source);
           }
         }}
@@ -366,8 +448,8 @@ export default function FullscreenViewer() {
         </Animated.View>
       )}
 
-      {/* Floating Frosted Bottom Bar */}
-      {showBars && (
+      {/* Floating Frosted Bottom Bar (hidden during active video playback so it never blocks native scrubber) */}
+      {showBars && !isVideoPlaying && (
         <Animated.View
           entering={FadeIn.duration(150)}
           exiting={FadeOut.duration(150)}
@@ -477,6 +559,7 @@ const PhotoSlide = memo(function PhotoSlide({
   screenHeight,
   onToggleBars,
   onZoomChange,
+  onDismiss,
 }: {
   item: MediaItem;
   isActive: boolean;
@@ -484,31 +567,17 @@ const PhotoSlide = memo(function PhotoSlide({
   screenHeight: number;
   onToggleBars: () => void;
   onZoomChange: (zoomed: boolean) => void;
+  onDismiss: () => void;
 }) {
-  const [isZoomed, setIsZoomed] = useState(false);
-  const [prevIsActive, setPrevIsActive] = useState(isActive);
-
-  if (prevIsActive !== isActive) {
-    setPrevIsActive(isActive);
-    if (!isActive) {
-      setIsZoomed(false);
-    }
-  }
-
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const savedX = useSharedValue(0);
   const savedY = useSharedValue(0);
-
-  const handleZoomChange = useCallback(
-    (zoomed: boolean) => {
-      setIsZoomed(zoomed);
-      onZoomChange(zoomed);
-    },
-    [onZoomChange]
-  );
+  const dismissY = useSharedValue(0);
+  const touchStartX = useSharedValue(0);
+  const touchStartY = useSharedValue(0);
 
   // Reset zoom whenever slide leaves active position
   useEffect(() => {
@@ -519,125 +588,253 @@ const PhotoSlide = memo(function PhotoSlide({
       translateY.value = 0;
       savedX.value = 0;
       savedY.value = 0;
-      onZoomChange(false);
+      dismissY.value = 0;
     }
   }, [
     isActive,
-    onZoomChange,
     scale,
     savedScale,
     translateX,
     translateY,
     savedX,
     savedY,
+    dismissY,
   ]);
 
-  const singleTap = Gesture.Tap().onEnd(() => {
-    "worklet";
-    runOnJS(onToggleBars)();
-  });
+  const singleTap = useMemo(
+    () =>
+      Gesture.Tap()
+        .enabled(isActive)
+        .onEnd(() => {
+          "worklet";
+          runOnJS(onToggleBars)();
+        }),
+    [isActive, onToggleBars],
+  );
 
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd(() => {
-      "worklet";
-      if (scale.value > 1.05) {
-        scale.value = withTiming(1);
-        savedScale.value = 1;
-        translateX.value = withTiming(0);
-        translateY.value = withTiming(0);
-        savedX.value = 0;
-        savedY.value = 0;
-        runOnJS(handleZoomChange)(false);
-      } else {
-        scale.value = withTiming(2.5);
-        savedScale.value = 2.5;
-        runOnJS(handleZoomChange)(true);
-      }
-    });
+  const doubleTap = useMemo(
+    () =>
+      Gesture.Tap()
+        .numberOfTaps(2)
+        .enabled(isActive)
+        .onEnd((e) => {
+          "worklet";
+          if (scale.value > 1.05) {
+            scale.value = withTiming(1);
+            savedScale.value = 1;
+            translateX.value = withTiming(0);
+            translateY.value = withTiming(0);
+            savedX.value = 0;
+            savedY.value = 0;
+            runOnJS(onZoomChange)(false);
+          } else {
+            const targetScale = 2.5;
+            const maxDragX = ((targetScale - 1) * screenWidth) / 2;
+            const maxDragY = ((targetScale - 1) * screenHeight) / 2;
+            const offsetX = (screenWidth / 2 - e.x) * (targetScale - 1);
+            const offsetY = (screenHeight / 2 - e.y) * (targetScale - 1);
+            const clampedX = Math.max(-maxDragX, Math.min(maxDragX, offsetX));
+            const clampedY = Math.max(-maxDragY, Math.min(maxDragY, offsetY));
 
-  const pinch = Gesture.Pinch()
-    .onUpdate((e) => {
-      "worklet";
-      const nextScale = Math.max(1, Math.min(savedScale.value * e.scale, 5));
-      scale.value = nextScale;
-      if (nextScale > 1.05) {
-        runOnJS(handleZoomChange)(true);
-      }
-    })
-    .onEnd(() => {
-      "worklet";
-      savedScale.value = scale.value;
-      if (scale.value < 1.05) {
-        scale.value = withTiming(1);
-        savedScale.value = 1;
-        translateX.value = withTiming(0);
-        translateY.value = withTiming(0);
-        savedX.value = 0;
-        savedY.value = 0;
-        runOnJS(handleZoomChange)(false);
-      }
-    });
-
-  // Pan within zoomed image - only enabled when zoomed
-  const zoomPan = Gesture.Pan()
-    .enabled(isZoomed)
-    .onUpdate((e) => {
-      "worklet";
-      const maxDragX = ((scale.value - 1) * screenWidth) / 2;
-      const maxDragY = ((scale.value - 1) * screenHeight) / 2;
-      translateX.value = Math.max(
-        -maxDragX,
-        Math.min(maxDragX, savedX.value + e.translationX)
-      );
-      translateY.value = Math.max(
-        -maxDragY,
-        Math.min(maxDragY, savedY.value + e.translationY)
-      );
-    })
-    .onEnd(() => {
-      "worklet";
-      savedX.value = translateX.value;
-      savedY.value = translateY.value;
-    });
-
-  const tapGestures = useMemo(() => Gesture.Exclusive(doubleTap, singleTap), [doubleTap, singleTap]);
-  const composedGestures = useMemo(() => {
-    if (isZoomed) {
-      return Gesture.Simultaneous(tapGestures, pinch, zoomPan);
-    }
-    return Gesture.Simultaneous(tapGestures, pinch);
-  }, [isZoomed, tapGestures, pinch, zoomPan]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
+            scale.value = withTiming(targetScale);
+            savedScale.value = targetScale;
+            translateX.value = withTiming(clampedX);
+            translateY.value = withTiming(clampedY);
+            savedX.value = clampedX;
+            savedY.value = clampedY;
+            runOnJS(onZoomChange)(true);
+          }
+        }),
+    [
+      isActive,
+      onZoomChange,
+      screenWidth,
+      screenHeight,
+      scale,
+      savedScale,
+      translateX,
+      translateY,
+      savedX,
+      savedY,
     ],
-  }));
+  );
 
-  if (!isActive) {
-    return (
-      <View
-        style={[
-          styles.slideContainer,
-          { width: screenWidth, height: screenHeight },
-        ]}
-      >
-        <Image
-          source={{ uri: item.uri }}
-          placeholder={{ uri: item.uri }}
-          style={{ width: screenWidth, height: screenHeight }}
-          contentFit="contain"
-          cachePolicy="memory-disk"
-          priority="low"
-          recyclingKey={item.id}
-          transition={0}
-        />
-      </View>
-    );
-  }
+  const pinch = useMemo(
+    () =>
+      Gesture.Pinch()
+        .enabled(isActive)
+        .onUpdate((e) => {
+          "worklet";
+          const nextScale = Math.max(
+            1,
+            Math.min(savedScale.value * e.scale, 5),
+          );
+          const maxDragX = ((nextScale - 1) * screenWidth) / 2;
+          const maxDragY = ((nextScale - 1) * screenHeight) / 2;
+          const scaleDelta =
+            savedScale.value > 0 ? nextScale / savedScale.value : 1;
+          const focalShiftX = (screenWidth / 2 - e.focalX) * (scaleDelta - 1);
+          const focalShiftY = (screenHeight / 2 - e.focalY) * (scaleDelta - 1);
+
+          scale.value = nextScale;
+          translateX.value = Math.max(
+            -maxDragX,
+            Math.min(maxDragX, savedX.value + focalShiftX),
+          );
+          translateY.value = Math.max(
+            -maxDragY,
+            Math.min(maxDragY, savedY.value + focalShiftY),
+          );
+          if (nextScale > 1.05) {
+            runOnJS(onZoomChange)(true);
+          }
+        })
+        .onEnd(() => {
+          "worklet";
+          savedScale.value = scale.value;
+          savedX.value = translateX.value;
+          savedY.value = translateY.value;
+          if (scale.value < 1.05) {
+            scale.value = withTiming(1);
+            savedScale.value = 1;
+            translateX.value = withTiming(0);
+            translateY.value = withTiming(0);
+            savedX.value = 0;
+            savedY.value = 0;
+            runOnJS(onZoomChange)(false);
+          }
+        }),
+    [
+      isActive,
+      onZoomChange,
+      screenWidth,
+      screenHeight,
+      savedScale,
+      scale,
+      translateX,
+      translateY,
+      savedX,
+      savedY,
+    ],
+  );
+
+  // Pan within zoomed image - manually activates ONLY when zoomed (> 1.02) so 1x horizontal swipe stays instant
+  const zoomPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(isActive)
+        .manualActivation(true)
+        .onTouchesMove((e, state) => {
+          "worklet";
+          if (scale.value > 1.02 && e.numberOfTouches === 1) {
+            state.activate();
+          } else {
+            state.fail();
+          }
+        })
+        .onUpdate((e) => {
+          "worklet";
+          const maxDragX = ((scale.value - 1) * screenWidth) / 2;
+          const maxDragY = ((scale.value - 1) * screenHeight) / 2;
+          translateX.value = Math.max(
+            -maxDragX,
+            Math.min(maxDragX, savedX.value + e.translationX),
+          );
+          translateY.value = Math.max(
+            -maxDragY,
+            Math.min(maxDragY, savedY.value + e.translationY),
+          );
+        })
+        .onEnd(() => {
+          "worklet";
+          savedX.value = translateX.value;
+          savedY.value = translateY.value;
+        }),
+    [
+      isActive,
+      scale,
+      screenWidth,
+      screenHeight,
+      translateX,
+      translateY,
+      savedX,
+      savedY,
+    ],
+  );
+
+  // Vertical swipe-down to dismiss at 1x zoom - fails fast on horizontal swipes so pager never locks
+  const dismissPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(isActive)
+        .manualActivation(true)
+        .onTouchesDown((e, state) => {
+          "worklet";
+          if (
+            scale.value > 1.02 ||
+            e.numberOfTouches !== 1 ||
+            e.changedTouches.length === 0
+          ) {
+            state.fail();
+            return;
+          }
+          touchStartX.value = e.changedTouches[0].x;
+          touchStartY.value = e.changedTouches[0].y;
+        })
+        .onTouchesMove((e, state) => {
+          "worklet";
+          if (
+            scale.value > 1.02 ||
+            e.numberOfTouches !== 1 ||
+            e.allTouches.length === 0
+          ) {
+            state.fail();
+            return;
+          }
+          const dx = e.allTouches[0].x - touchStartX.value;
+          const dy = e.allTouches[0].y - touchStartY.value;
+          if (Math.abs(dx) > 16 || dy < -12) {
+            state.fail();
+          } else if (dy > 20 && dy > Math.abs(dx) * 1.5) {
+            state.activate();
+          }
+        })
+        .onUpdate((e) => {
+          "worklet";
+          dismissY.value = Math.max(0, e.translationY);
+        })
+        .onEnd((e) => {
+          "worklet";
+          if (e.translationY > 110 || e.velocityY > 650) {
+            runOnJS(onDismiss)();
+          } else {
+            dismissY.value = withSpring(0, { damping: 24, stiffness: 280 });
+          }
+        }),
+    [isActive, scale, dismissY, touchStartX, touchStartY, onDismiss],
+  );
+
+  const tapGestures = useMemo(
+    () => Gesture.Exclusive(doubleTap, singleTap),
+    [doubleTap, singleTap],
+  );
+
+  const composedGestures = useMemo(() => {
+    return Gesture.Simultaneous(tapGestures, pinch, zoomPan, dismissPan);
+  }, [tapGestures, pinch, zoomPan, dismissPan]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const dismissScale = 1 - Math.min(dismissY.value / 1400, 0.14);
+    const dismissOpacity = 1 - Math.min(dismissY.value / 500, 0.45);
+    return {
+      opacity: dismissOpacity,
+      transform: [
+        { translateX: translateX.value },
+        { translateY: translateY.value + dismissY.value },
+        { scale: scale.value * dismissScale },
+      ],
+    };
+  });
 
   return (
     <GestureDetector gesture={composedGestures}>
@@ -650,13 +847,12 @@ const PhotoSlide = memo(function PhotoSlide({
       >
         <Image
           source={{ uri: item.uri }}
-          placeholder={{ uri: item.uri }}
           style={{ width: screenWidth, height: screenHeight }}
           contentFit="contain"
           cachePolicy="memory-disk"
           priority="high"
           recyclingKey={item.id}
-          transition={100}
+          transition={0}
         />
       </Animated.View>
     </GestureDetector>
@@ -671,31 +867,21 @@ const PhotoSlide = memo(function PhotoSlide({
  */
 function VideoSlide({
   item,
-  isActive,
+  isPlaying,
+  onPlay,
   screenWidth,
   screenHeight,
 }: {
   item: MediaItem;
-  isActive: boolean;
+  isPlaying: boolean;
+  onPlay: () => void;
   screenWidth: number;
   screenHeight: number;
 }) {
-  const [prevIsActive, setPrevIsActive] = useState(isActive);
-  const [userRequestedPlay, setUserRequestedPlay] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const posterUri = useVideoThumbnail(item.id, item.uri, true, 384);
 
-  // FIX-5: Reset playback state when slide becomes inactive
-  if (prevIsActive !== isActive) {
-    setPrevIsActive(isActive);
-    if (!isActive) {
-      setUserRequestedPlay(false);
-      setHasError(false);
-    }
-  }
-
-  const isPlaying = isActive && userRequestedPlay && !hasError;
-
-  if (isPlaying) {
+  if (isPlaying && !hasError) {
     return (
       <ActiveVideoPlayer
         uri={item.uri}
@@ -714,18 +900,22 @@ function VideoSlide({
         styles.videoPosterContainer,
         { width: screenWidth, height: screenHeight },
       ]}
-      onPress={() => setUserRequestedPlay(true)}
+      onPress={() => {
+        setHasError(false);
+        onPlay();
+      }}
     >
-      <Image
-        source={{ uri: item.uri }}
-        placeholder={{ uri: item.uri }}
-        style={{ width: screenWidth, height: screenHeight }}
-        contentFit="contain"
-        cachePolicy="memory-disk"
-        priority={isActive ? "high" : "low"}
-        recyclingKey={item.id}
-        transition={0}
-      />
+      {posterUri ? (
+        <Image
+          source={{ uri: posterUri, width: 384, height: 384 }}
+          style={{ width: screenWidth, height: screenHeight }}
+          contentFit="contain"
+          cachePolicy="memory"
+          priority="low"
+          recyclingKey={item.id}
+          transition={0}
+        />
+      ) : null}
       <View style={styles.playButtonOverlay}>
         <View style={styles.playButtonCircle}>
           <AppIcon
@@ -762,6 +952,17 @@ function ActiveVideoPlayer({
     p.loop = false;
     p.play();
   });
+
+  useEffect(() => {
+    const sub = player.addListener("statusChange", ({ status, error }) => {
+      if (status === "error" || error) {
+        onError();
+      }
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [player, onError]);
 
   return (
     <View

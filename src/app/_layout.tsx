@@ -13,6 +13,7 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 
 import { mediaService } from '../features/media/mediaService';
+import { useFavoritesStore } from '../features/media/favoritesStore';
 import { PermissionStatusResult } from '../features/media/types';
 import { PermissionGate } from '../components/PermissionGate';
 import { UpdateModal } from '../components/UpdateModal';
@@ -38,7 +39,8 @@ export default function RootLayout() {
       }
     });
 
-    // Check for updates silently on app launch
+    // Hydrate saved favorites and check for updates silently on app launch
+    useFavoritesStore.getState().hydrate().catch(() => {});
     useUpdateStore.getState().checkForUpdates(false).catch(() => {});
 
     // Re-check permission when app returns to foreground (PERM-4)
@@ -70,7 +72,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <StatusBar style="light" />
-      <UpdateModal />
+      {permission?.granted ? <UpdateModal /> : null}
       {permission && !permission.granted ? (
         <PermissionGate
           canAskAgain={permission.canAskAgain}

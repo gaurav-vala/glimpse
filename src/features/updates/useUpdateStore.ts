@@ -1,6 +1,9 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import { create } from 'zustand';
 import { ReleaseInfo } from './types';
 import { updateService, CURRENT_APP_VERSION } from './updateService';
+
+const DISMISSED_VERSION_FILE = `${FileSystem.documentDirectory ?? ''}glimpse-dismissed-update.txt`;
 
 interface UpdateState {
   hasUpdate: boolean;
@@ -34,11 +37,26 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       const result = await updateService.checkLatestRelease();
       const hasUpdate = result.hasUpdate && Boolean(result.release?.apkUrl);
 
+      let shouldAutoOpen = hasUpdate;
+      if (hasUpdate && !manual && FileSystem.documentDirectory && result.release?.tagName) {
+        try {
+          const info = await FileSystem.getInfoAsync(DISMISSED_VERSION_FILE);
+          if (info.exists) {
+            const dismissedTag = (await FileSystem.readAsStringAsync(DISMISSED_VERSION_FILE)).trim();
+            if (dismissedTag === result.release.tagName) {
+              shouldAutoOpen = false;
+            }
+          }
+        } catch {
+          // Ignore file read errors
+        }
+      }
+
       set({
         hasUpdate,
         latestRelease: result.release,
         isChecking: false,
-        isModalVisible: hasUpdate, // Automatically show modal if update found
+        isModalVisible: manual ? hasUpdate : shouldAutoOpen,
       });
 
       return hasUpdate;
@@ -74,5 +92,11 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   },
 
   openModal: () => set({ isModalVisible: true }),
-  closeModal: () => set({ isModalVisible: false }),
+  closeModal: () => {
+    const tag = get().latestRelease?.tagName;
+    if (tag && FileSystem.documentDirectory) {
+      FileSystem.writeAsStringAsync(DISMISSED_VERSION_FILE, tag).catch(() => {});
+    }
+    set({ isModalVisible: false });
+  },
 }));

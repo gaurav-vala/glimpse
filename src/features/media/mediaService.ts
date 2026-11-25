@@ -1,7 +1,8 @@
 import { Platform } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as MediaLibrary from 'expo-media-library/legacy';
-import { MediaItem, Album, PermissionStatusResult } from './types';
+import GlimpseMedia from '../../../modules/glimpse-media';
+import { MediaItem, Album, MediaType, PermissionStatusResult } from './types';
 import { generateMockMediaItems, MOCK_ALBUMS } from './mockData';
 
 /**
@@ -19,6 +20,8 @@ import { generateMockMediaItems, MOCK_ALBUMS } from './mockData';
 class MediaService {
   private cameraAlbumCache: Album | null = null;
   private albumCoverCache = new Map<string, string>();
+  public albumCoverIdCache = new Map<string, string>();
+  public albumCoverTypeCache = new Map<string, MediaType>();
   public albumTimestampCache = new Map<string, number>();
   private mockItems: MediaItem[] = [];
   private mockAlbums: Album[] = [];
@@ -128,16 +131,17 @@ class MediaService {
 
   /**
    * Convert an expo-media-library asset into a plain MediaItem.
-   * On Android, resolves to system ContentProvider URIs (content://media/external/...)
-   * which leverages Android MediaStore's native thumbnail cache and is required by
-   * ExoPlayer to bypass Scoped Storage file restrictions.
+   * For photos, keeps direct file:// URIs when available so Glide decodes directly in-process
+   * without bottlenecking Android's single-process MediaProvider IPC.
+   * For videos, uses content://media/external/video/media/<id> for ExoPlayer and fast cached thumbnails.
    */
   private formatAsset = (asset: MediaLibrary.Asset): MediaItem => {
     const isAndroid = Platform.OS === 'android';
     let resolvedUri = asset.uri;
-    if (isAndroid && !this._demoMode && asset.id) {
-      const type = asset.mediaType === 'video' ? 'video' : 'images';
-      resolvedUri = `content://media/external/${type}/media/${asset.id}`;
+    if (isAndroid && !this._demoMode && asset.id && asset.mediaType === 'video') {
+      resolvedUri = `content://media/external/video/media/${asset.id}`;
+    } else if (isAndroid && !this._demoMode && asset.id && !resolvedUri) {
+      resolvedUri = `content://media/external/images/media/${asset.id}`;
     }
 
     const rawCreation = asset.creationTime && asset.creationTime > 0 ? asset.creationTime : 0;
@@ -276,6 +280,45 @@ class MediaService {
       return [...this.mockAlbums];
     }
 
+    if (Platform.OS === 'android' && GlimpseMedia?.getAlbumsFast) {
+      try {
+        const fastAlbums = await GlimpseMedia.getAlbumsFast();
+        if (fastAlbums.length > 0) {
+          const mapped: Album[] = fastAlbums.map((a) => {
+            if (a.coverUri) {
+              this.albumCoverCache.set(a.id, a.coverUri);
+            }
+            if (a.coverAssetId) {
+              this.albumCoverIdCache.set(a.id, a.coverAssetId);
+            }
+            this.albumCoverTypeCache.set(a.id, a.coverMediaType);
+            this.albumTimestampCache.set(a.id, a.latestTimestamp || 0);
+            return {
+              id: a.id,
+              title: a.title,
+              assetCount: a.assetCount,
+              coverUri: a.coverUri ?? undefined,
+              coverAssetId: a.coverAssetId ?? undefined,
+              coverMediaType: a.coverMediaType,
+              latestTimestamp: a.latestTimestamp || 0,
+            };
+          });
+
+          return mapped.sort((a, b) => {
+            const aTitle = a.title.toLowerCase();
+            const bTitle = b.title.toLowerCase();
+            if (aTitle === 'camera' || aTitle === 'dcim') return -1;
+            if (bTitle === 'camera' || bTitle === 'dcim') return 1;
+            if (aTitle === 'screenshots') return -1;
+            if (bTitle === 'screenshots') return 1;
+            return b.assetCount - a.assetCount;
+          });
+        }
+      } catch (err) {
+        console.warn('[Perf:AlbumsFastFallback]', err);
+      }
+    }
+
     try {
       const rawAlbums = await MediaLibrary.getAlbumsAsync();
       const nonZero = rawAlbums.filter((a) => a.assetCount > 0);
@@ -332,10 +375,12 @@ class MediaService {
       if (res.assets.length > 0) {
         const asset = res.assets[0];
         const isAndroid = Platform.OS === 'android';
+        const isVideo = asset.mediaType === 'video';
         let cover = asset.uri;
-        if (isAndroid && !this._demoMode && asset.id) {
-          const type = asset.mediaType === 'video' ? 'video' : 'images';
-          cover = `content://media/external/${type}/media/${asset.id}`;
+        if (isAndroid && !this._demoMode && asset.id && isVideo) {
+          cover = `content://media/external/video/media/${asset.id}`;
+        } else if (isAndroid && !this._demoMode && asset.id && !cover) {
+          cover = `content://media/external/images/media/${asset.id}`;
         }
         const rawCreation = asset.creationTime && asset.creationTime > 0 ? asset.creationTime : 0;
         const rawModification = asset.modificationTime && asset.modificationTime > 0 ? asset.modificationTime : 0;
@@ -343,6 +388,10 @@ class MediaService {
         const normModification = rawModification > 0 && rawModification < 1e11 ? rawModification * 1000 : rawModification;
         const time = Math.max(normCreation, normModification) || 0;
         this.albumCoverCache.set(albumId, cover);
+        if (asset.id) {
+          this.albumCoverIdCache.set(albumId, asset.id);
+        }
+        this.albumCoverTypeCache.set(albumId, isVideo ? 'video' : 'photo');
         this.albumTimestampCache.set(albumId, time);
         return cover;
       }
@@ -381,6 +430,17 @@ class MediaService {
   }
 
   /**
+   * Invalidate cached album covers/timestamps so pull-to-refresh and deletions show fresh thumbnails.
+   */
+  public invalidateAlbumCache() {
+    this.albumCoverCache.clear();
+    this.albumCoverIdCache.clear();
+    this.albumCoverTypeCache.clear();
+    this.albumTimestampCache.clear();
+    this.cameraAlbumCache = null;
+  }
+
+  /**
    * Delete assets through the native OS dialog (or mock deletion in Expo Go).
    */
   async deleteAssets(assetIds: string[]): Promise<boolean> {
@@ -396,12 +456,17 @@ class MediaService {
         return { ...a, assetCount: remaining };
       });
 
+      this.invalidateAlbumCache();
       this.notifyListeners();
       return true;
     }
 
     try {
-      return await MediaLibrary.deleteAssetsAsync(assetIds);
+      const deleted = await MediaLibrary.deleteAssetsAsync(assetIds);
+      if (deleted) {
+        this.invalidateAlbumCache();
+      }
+      return deleted;
     } catch (err) {
       console.warn('deleteAssetsAsync error:', err);
       throw err;
